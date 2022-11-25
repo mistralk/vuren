@@ -1,0 +1,6 @@
+# ignore binary files that have no extension
+*
+!*.*
+!*/
+
+.vscode/
