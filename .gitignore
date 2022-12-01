@@ -1,9 +1,2 @@
-# ignore binary files that have no extension
-*
-!*.*
-!*/
-
+build/
 .vscode/
-
-*.spv
-

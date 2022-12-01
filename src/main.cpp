@@ -725,8 +725,8 @@ private:
     }
 
     void createGraphicsPipeline() {
-        auto vertShaderCode = readFile("src/shaders/vert.spv");
-        auto fragShaderCode = readFile("src/shaders/frag.spv");
+        auto vertShaderCode = readFile("shaders/shader.vert.spv");
+        auto fragShaderCode = readFile("shaders/shader.frag.spv");
 
         vk::ShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         vk::ShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -1311,8 +1311,8 @@ private:
         }
 
         std::array<vk::ClearValue, 2> clearValues {};
-        clearValues[0].color = vk::ClearColorValue( std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f});
-        clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+        clearValues[0].color = vk::ClearColorValue {std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
+        clearValues[1].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
 
         vk::RenderPassBeginInfo renderPassInfo { .renderPass = renderPass_,
                                                  .framebuffer = swapChainFramebuffers_[imageIndex],
