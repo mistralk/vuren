@@ -15,7 +15,7 @@ add_subdirectory(src)
 
 target_include_directories(vulkan_render_base PRIVATE ext/stb)
 
-target_link_libraries(vulkan_render_base
+target_link_libraries(vulkan_render_base PRIVATE
     vulkan
     glfw
 )
