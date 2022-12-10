@@ -13,7 +13,20 @@ set_target_properties(vulkan_render_base PROPERTIES CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(src)
 
-target_include_directories(vulkan_render_base PRIVATE ext/stb)
+target_include_directories(vulkan_render_base PRIVATE ext)
+target_include_directories(vulkan_render_base PRIVATE ext/imgui)
+target_include_directories(vulkan_render_base PRIVATE ext/imgui/backends)
+
+# imgui
+target_sources(vulkan_render_base PRIVATE
+    ext/imgui/imgui.cpp
+    ext/imgui/imgui_demo.cpp
+    ext/imgui/imgui_draw.cpp
+    ext/imgui/imgui_widgets.cpp
+    ext/imgui/imgui_tables.cpp
+    ext/imgui/backends/imgui_impl_vulkan.cpp
+    ext/imgui/backends/imgui_impl_glfw.cpp
+)
 
 target_link_libraries(vulkan_render_base PRIVATE
     vulkan

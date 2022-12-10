@@ -58,6 +58,7 @@ public:
         void* pUserData);
     void populateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCreateInfoEXT& createInfo);
 
+    vk::Instance m_instance;
     vk::SurfaceKHR m_surface;
     vk::PhysicalDevice m_physicalDevice;
     vk::Device m_device;
@@ -68,7 +69,6 @@ private:
     std::string m_appName;
     GLFWwindow* m_pWindow = nullptr;
 
-    vk::Instance m_instance;
     vk::DebugUtilsMessengerEXT m_debugMessenger;
 };
 

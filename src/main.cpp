@@ -5,9 +5,11 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
+#include <imgui/imgui.h>
+#include <imgui/backends/imgui_impl_glfw.h>
+#include <imgui/backends/imgui_impl_vulkan.h>
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include <stb/stb_image.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -25,6 +27,7 @@
 
 #include "VulkanContext.hpp"
 #include "Utils.hpp"
+
 
 namespace vrb {
 
@@ -85,7 +88,7 @@ const std::vector<uint32_t> indices = {
     4, 5, 6, 6, 7, 4
 };
 
-class VRBApplication {
+class Application {
 private:
     GLFWwindow* m_pWindow;
 
@@ -133,18 +136,68 @@ private:
     uint32_t m_currentFrame = 0;
     bool m_framebufferResized = false;
 
+    // imgui
+    vk::DescriptorPool m_imguiDescriptorPool;
+
 public:
-    VRBApplication() {
+    Application() {
     }
 
     void run() {
         initWindow();
         initVulkan();
+        initImGui();
         mainLoop();
         cleanup();
     }
 
 private:
+    void initImGui() {
+        // create descriptor pool for imgui
+        vk::DescriptorPoolSize poolSizes[] = {
+            { vk::DescriptorType::eSampler, 1000 },
+            { vk::DescriptorType::eCombinedImageSampler, 1000 },
+            { vk::DescriptorType::eSampledImage, 1000 },
+            { vk::DescriptorType::eStorageImage, 1000 },
+            { vk::DescriptorType::eUniformTexelBuffer, 1000 },
+            { vk::DescriptorType::eStorageTexelBuffer, 1000 },
+            { vk::DescriptorType::eUniformBuffer, 1000 },
+            { vk::DescriptorType::eStorageBuffer, 1000 },
+            { vk::DescriptorType::eUniformBufferDynamic, 1000 },
+            { vk::DescriptorType::eStorageBufferDynamic, 1000 },
+            { vk::DescriptorType::eInputAttachment, 1000 }
+        };
+        
+        vk::DescriptorPoolCreateInfo poolCreateInfo = { .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                                        .maxSets = 1000,
+                                                        .poolSizeCount = std::size(poolSizes),
+                                                        .pPoolSizes = poolSizes };
+        
+        if (m_vkContext.m_device.createDescriptorPool(&poolCreateInfo, nullptr, &m_imguiDescriptorPool) != vk::Result::eSuccess) {
+            throw std::runtime_error("failed to create descriptor pool for imgui!");
+        }
+
+        // initialize imgui
+        ImGui::CreateContext();
+        ImGui_ImplGlfw_InitForVulkan(m_pWindow, true);
+        ImGui_ImplVulkan_InitInfo initInfo = { .Instance = m_vkContext.m_instance,
+                                               .PhysicalDevice = m_vkContext.m_physicalDevice,
+                                               .Device = m_vkContext.m_device,
+                                               .Queue = m_vkContext.m_graphicsQueue,
+                                               .DescriptorPool = m_imguiDescriptorPool,
+                                               .MinImageCount = 3,
+                                               .ImageCount = 3,
+                                               .MSAASamples = VK_SAMPLE_COUNT_1_BIT };
+        
+        ImGui_ImplVulkan_Init(&initInfo, m_renderPass);
+
+        // execute a GPU command to upload imgui font textures
+        vk::CommandBuffer commandBuffer = beginSingleTimeCommands();
+        ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+        endSingleTimeCommands(commandBuffer);
+        ImGui_ImplVulkan_DestroyFontUploadObjects();
+    }
+
     void initWindow() {
         glfwInit();
 
@@ -158,7 +211,7 @@ private:
     }
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-        auto app = reinterpret_cast<VRBApplication*>(glfwGetWindowUserPointer(window));
+        auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
         app->m_framebufferResized = true;
     }
 
@@ -186,6 +239,12 @@ private:
     void mainLoop() {
         while (!glfwWindowShouldClose(m_pWindow)) {
             glfwPollEvents();
+            
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
+
             drawFrame();
         }
 
@@ -205,6 +264,9 @@ private:
 
         m_vkContext.m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
         m_vkContext.m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
+
+        m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
+        ImGui_ImplVulkan_Shutdown();
 
         m_vkContext.m_device.destroyBuffer(m_vertexBuffer, nullptr);
         m_vkContext.m_device.freeMemory(m_vertexBufferMemory, nullptr);
@@ -1017,6 +1079,8 @@ private:
         commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSets[m_currentFrame], 0, nullptr);
         commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
         
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+
         commandBuffer.endRenderPass();
 
         try { 
@@ -1069,6 +1133,7 @@ private:
         }
 
         m_commandBuffers[m_currentFrame].reset();
+        ImGui::Render();
         recordCommandBuffer(m_commandBuffers[m_currentFrame], imageIndex);
 
         updateUniformBuffer(m_currentFrame);
@@ -1166,7 +1231,7 @@ private:
 } // namespace vrb
 
 int main() {
-    vrb::VRBApplication app;
+    vrb::Application app;
 
     try {
         app.run();
