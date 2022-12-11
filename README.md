@@ -7,6 +7,7 @@ Currently it has only been tested on Ubuntu 22.04.
 ## Prerequisites
 
 - vulkan
+- glslangValidator
 - glfw3
 - glm
 

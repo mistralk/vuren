@@ -27,6 +27,7 @@
 
 #include "VulkanContext.hpp"
 #include "Utils.hpp"
+#include "Timer.hpp"
 
 
 namespace vrb {
@@ -99,6 +100,7 @@ private:
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
     std::vector<vk::ImageView> m_swapChainImageViews;
+    uint32_t m_imageCount;
 
     vk::RenderPass m_renderPass;
     vk::DescriptorSetLayout m_descriptorSetLayout;
@@ -180,13 +182,14 @@ private:
         // initialize imgui
         ImGui::CreateContext();
         ImGui_ImplGlfw_InitForVulkan(m_pWindow, true);
+
         ImGui_ImplVulkan_InitInfo initInfo = { .Instance = m_vkContext.m_instance,
                                                .PhysicalDevice = m_vkContext.m_physicalDevice,
                                                .Device = m_vkContext.m_device,
                                                .Queue = m_vkContext.m_graphicsQueue,
                                                .DescriptorPool = m_imguiDescriptorPool,
-                                               .MinImageCount = 3,
-                                               .ImageCount = 3,
+                                               .MinImageCount = m_imageCount,
+                                               .ImageCount = m_imageCount,
                                                .MSAASamples = VK_SAMPLE_COUNT_1_BIT };
         
         ImGui_ImplVulkan_Init(&initInfo, m_renderPass);
@@ -196,6 +199,13 @@ private:
         ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
         endSingleTimeCommands(commandBuffer);
         ImGui_ImplVulkan_DestroyFontUploadObjects();
+    }
+
+    void updateGUI() {
+        // ImGui_ImplVulkan_NewFrame(); // do i need it?
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::ShowDemoWindow();
     }
 
     void initWindow() {
@@ -237,15 +247,15 @@ private:
     }
 
     void mainLoop() {
+        Timer timer;
+        auto deltaTime = timer.stop();
+
         while (!glfwWindowShouldClose(m_pWindow)) {
             glfwPollEvents();
             
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
+            updateGUI();
 
-            drawFrame();
+            drawFrame(deltaTime);
         }
 
         m_vkContext.m_device.waitIdle();
@@ -299,13 +309,13 @@ private:
         vk::PresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
         vk::Extent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-        uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-        if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
-            imageCount = swapChainSupport.capabilities.maxImageCount;
+        m_imageCount = swapChainSupport.capabilities.minImageCount + 1;
+        if (swapChainSupport.capabilities.maxImageCount > 0 && m_imageCount > swapChainSupport.capabilities.maxImageCount) {
+            m_imageCount = swapChainSupport.capabilities.maxImageCount;
         }
 
         vk::SwapchainCreateInfoKHR createInfo { .surface = m_vkContext.m_surface,
-                                                .minImageCount = imageCount,
+                                                .minImageCount = m_imageCount,
                                                 .imageFormat = surfaceFormat.format,
                                                 .imageColorSpace = surfaceFormat.colorSpace,
                                                 .imageExtent = extent,
@@ -335,11 +345,11 @@ private:
             throw std::runtime_error("failed to create swap chain!");
         }
 
-        if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &imageCount, nullptr) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &m_imageCount, nullptr) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to get swap chain imageCount!");
         }
-        m_swapChainImages.resize(imageCount);
-        if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &imageCount, m_swapChainImages.data()) != vk::Result::eSuccess) {
+        m_swapChainImages.resize(m_imageCount);
+        if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &m_imageCount, m_swapChainImages.data()) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to get swap chain!");
         }
         m_swapChainImageFormat = surfaceFormat.format;
@@ -1107,7 +1117,7 @@ private:
         }
     }
 
-    void drawFrame() {
+    void drawFrame(double deltaTime) {
         vk::Result result;
 
         // "At the start of the frame, we want to wait until the previous frame has finished"

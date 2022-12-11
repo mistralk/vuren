@@ -3,5 +3,7 @@ target_sources(vulkan_render_base PRIVATE
     VulkanContext.cpp
     Utils.hpp
     Utils.cpp
+    Timer.hpp
+    Timer.cpp
     main.cpp
 )
