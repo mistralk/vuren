@@ -11,7 +11,8 @@ const std::vector<const char*> kValidationLayers = {
 };
 
 const std::vector<const char*> kDeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME
 };
 
 std::vector<char> readFile(const std::string& filename);

@@ -40,13 +40,17 @@ void VulkanContext::createInstance() {
 
     assert(!m_appName.empty());
 
-    vk::ApplicationInfo applicationInfo{ .pApplicationName      = m_appName.c_str(),
-                                         .applicationVersion    = 1,
-                                         .pEngineName           = nullptr, 
-                                         .engineVersion         = 1,
-                                         .apiVersion            = VK_API_VERSION_1_1 };
+    vk::ApplicationInfo applicationInfo {
+        .pApplicationName      = m_appName.c_str(),
+        .applicationVersion    = 1,
+        .pEngineName           = nullptr, 
+        .engineVersion         = 1,
+        .apiVersion            = VK_API_VERSION_1_1
+    };
 
-    vk::InstanceCreateInfo instanceCreateInfo{ .pApplicationInfo = &applicationInfo };
+    vk::InstanceCreateInfo instanceCreateInfo {
+        .pApplicationInfo = &applicationInfo
+    };
 
     vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 
@@ -56,19 +60,41 @@ void VulkanContext::createInstance() {
 
         populateDebugMessengerCreateInfo(debugCreateInfo);
         instanceCreateInfo.pNext = (vk::DebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
+
+        vk::ValidationFeatureEnableEXT enabledValidationFeatures[] {
+            vk::ValidationFeatureEnableEXT::eDebugPrintf
+        };
+        vk::ValidationFeaturesEXT validationFeatures {
+            .pNext = instanceCreateInfo.pNext,
+            .enabledValidationFeatureCount = std::size(enabledValidationFeatures),
+            .pEnabledValidationFeatures = enabledValidationFeatures
+        };
+        instanceCreateInfo.pNext = &validationFeatures;
+
+        auto extensions = getRequiredExtensions();
+        instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+        instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
+        vk::StructureChain<vk::InstanceCreateInfo, vk::ValidationFeaturesEXT, vk::DebugUtilsMessengerCreateInfoEXT> chain = {instanceCreateInfo, validationFeatures, debugCreateInfo};
+        m_instance = vk::createInstance(chain.get<vk::InstanceCreateInfo>());
+        return;
     }
     else {
         instanceCreateInfo.enabledLayerCount = 0;
         instanceCreateInfo.pNext = nullptr;
+
+        auto extensions = getRequiredExtensions();
+        instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+        instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
+        m_instance = vk::createInstance(instanceCreateInfo, nullptr);
     }
 
     // "Vulkan is a platform agnostic API, which means that you need an extension
     //  to interface with the window system. GLFW has a handy built-in function
     //  that returns the extension(s) it needs to do ..."
 
-    auto extensions = getRequiredExtensions();
-    instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
+    // auto extensions = getRequiredExtensions();
+    // instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    // instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
 
     std::vector<vk::ExtensionProperties> avaliableExtensions =  vk::enumerateInstanceExtensionProperties(nullptr);
     std::cout << "available extensions:\n";
@@ -76,7 +102,7 @@ void VulkanContext::createInstance() {
         std::cout << '\t' << extension.extensionName << '\n';
     }
 
-    m_instance = vk::createInstance(instanceCreateInfo, nullptr);
+    // m_instance = vk::createInstance(instanceCreateInfo, nullptr);
 }
 
 void VulkanContext::setupDebugMessenger() {
@@ -126,9 +152,11 @@ void VulkanContext::createLogicalDevice() {
     float queuePriority = 1.0f;
 
     for (uint32_t queueFamily : uniqueQueueFamilies) {
-        vk::DeviceQueueCreateInfo queueCreateInfo { .queueFamilyIndex = queueFamily,
-                                                    .queueCount = 1,
-                                                    .pQueuePriorities = &queuePriority };
+        vk::DeviceQueueCreateInfo queueCreateInfo { 
+            .queueFamilyIndex = queueFamily,
+            .queueCount = 1,
+            .pQueuePriorities = &queuePriority
+        };
         queueCreateInfos.push_back(queueCreateInfo);
     }
     
@@ -139,11 +167,13 @@ void VulkanContext::createLogicalDevice() {
 
     vk::PhysicalDeviceFeatures deviceFeatures{};
 
-    vk::DeviceCreateInfo createInfo{ .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-                                        .pQueueCreateInfos = queueCreateInfos.data(),
-                                        .enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size()),
-                                        .ppEnabledExtensionNames = kDeviceExtensions.data(),
-                                        .pEnabledFeatures = &deviceFeatures };
+    vk::DeviceCreateInfo createInfo{ 
+        .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+        .pQueueCreateInfos = queueCreateInfos.data(),
+        .enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size()),
+        .ppEnabledExtensionNames = kDeviceExtensions.data(),
+        .pEnabledFeatures = &deviceFeatures 
+    };
 
     if (kEnableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());
@@ -269,13 +299,16 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContext::debugCallBack(
 
 void VulkanContext::populateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCreateInfoEXT& createInfo) {
     createInfo = { 
+        .pNext = VK_NULL_HANDLE,
         .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | 
+                            vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
                             vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
                             vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
         .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | 
                         vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | 
                         vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-        .pfnUserCallback = debugCallBack };
+        .pfnUserCallback = debugCallBack
+    };
 }
 
 } // namespace vrb
