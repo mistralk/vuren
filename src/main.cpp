@@ -5,11 +5,15 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/backends/imgui_impl_vulkan.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tinyobjloader/tiny_obj_loader.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -24,11 +28,11 @@
 #include <fstream>
 #include <array>
 #include <chrono>
+#include <unordered_map>
 
 #include "VulkanContext.hpp"
 #include "Utils.hpp"
 #include "Timer.hpp"
-
 
 namespace vrb {
 
@@ -40,17 +44,20 @@ const int kMaxFramesInFlight = 2;
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
+    glm::vec2 texCoord;
 
     static vk::VertexInputBindingDescription getBindingDescription() {
-        vk::VertexInputBindingDescription bindingDescription{ .binding = 0,
-                                                              .stride = sizeof(Vertex),
-                                                              .inputRate = vk::VertexInputRate::eVertex};
+        vk::VertexInputBindingDescription bindingDescription{ 
+            .binding = 0,
+            .stride = sizeof(Vertex),
+            .inputRate = vk::VertexInputRate::eVertex
+        };
 
         return bindingDescription;
     }
 
-    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions() {
-        std::array<vk::VertexInputAttributeDescription, 2> attributeDescriptions{};
+    static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions() {
+        std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions{};
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
@@ -62,7 +69,16 @@ struct Vertex {
         attributeDescriptions[1].format = vk::Format::eR32G32B32Sfloat;
         attributeDescriptions[1].offset = offsetof(Vertex, color);
 
+        attributeDescriptions[2].binding = 0;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = vk::Format::eR32G32Sfloat;
+        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+
         return attributeDescriptions;
+    }
+
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
     }
 };
 
@@ -71,23 +87,19 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
+} // namespace vrb
 
-const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}}
+namespace std {
+template<> struct hash<vrb::Vertex> {
+    size_t operator()(vrb::Vertex const& vertex) const {
+        return ((hash<glm::vec3>()(vertex.pos) ^
+                (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                (hash<glm::vec2>()(vertex.texCoord) << 1);
+    }
 };
+} // namespace std
 
-const std::vector<uint32_t> indices = {
-    0, 1, 2, 2, 3, 0,
-    4, 5, 6, 6, 7, 4
-};
+namespace vrb {
 
 class Application {
 private:
@@ -121,8 +133,11 @@ private:
     std::vector<vk::DeviceMemory> m_uniformBuffersMemory;
     std::vector<void*> m_uniformBuffersMapped;
 
+    // for model texture
     vk::Image m_textureImage;
+    vk::ImageView m_textureImageView;
     vk::DeviceMemory m_textureImageMemory;
+    vk::Sampler m_textureSampler;
 
     // for the offscreen pass
     vk::RenderPass m_offscreenRenderPass {VK_NULL_HANDLE};
@@ -155,6 +170,10 @@ private:
     std::vector<vk::DescriptorSet> m_guiDescriptorSets;
     vk::DescriptorPool m_guiDescriptorPool;
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
+
+    // for obj models
+    std::vector<Vertex> m_vertices;
+    std::vector<uint32_t> m_indices;
 
 public:
     Application() {
@@ -250,6 +269,10 @@ private:
         createOffscreenRender();
         createOffscreenDescriptorSetLayout();
         createGraphicsPipeline();
+        createTextureImage();
+        createTextureImageView();
+        createTextureSampler();
+        loadModel();
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -266,6 +289,44 @@ private:
         createSyncObjects();
     }
 
+    void loadModel() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn, err;
+
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "models/viking_room.obj")) {
+            throw std::runtime_error(warn + err);
+        }
+
+        std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex{};
+
+                vertex.pos = {
+                    attrib.vertices[3 * index.vertex_index + 0],
+                    attrib.vertices[3 * index.vertex_index + 1],
+                    attrib.vertices[3 * index.vertex_index + 2]
+                };
+
+                vertex.texCoord = {
+                    attrib.texcoords[2 * index.texcoord_index + 0],
+                    1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+                };
+
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                if (uniqueVertices.count(vertex) == 0) {
+                    uniqueVertices[vertex] = static_cast<uint32_t>(m_vertices.size());
+                    m_vertices.push_back(vertex);
+                }
+
+                m_indices.push_back(uniqueVertices[vertex]);
+            }
+        }
+    }
 
     void createOffscreenRender() {
         // create the color image        
@@ -319,15 +380,21 @@ private:
 
     void cleanup() {
         // cleanup offscreen data
+        m_vkContext.m_device.destroyImageView(m_textureImageView, nullptr);
+        m_vkContext.m_device.destroyImage(m_textureImage, nullptr);
+        m_vkContext.m_device.freeMemory(m_textureImageMemory, nullptr);
+        m_vkContext.m_device.destroySampler(m_textureSampler, nullptr);
 
+        m_vkContext.m_device.destroyImageView(m_colorImageView, nullptr);
         m_vkContext.m_device.destroyImage(m_colorImage, nullptr);
         m_vkContext.m_device.freeMemory(m_colorImageMemory, nullptr);
         m_vkContext.m_device.destroySampler(m_colorImageSampler, nullptr);
-        m_vkContext.m_device.destroyImageView(m_colorImageView, nullptr);
+
+        m_vkContext.m_device.destroyImageView(m_depthImageView, nullptr);
         m_vkContext.m_device.destroyImage(m_depthImage, nullptr);
         m_vkContext.m_device.freeMemory(m_depthImageMemory, nullptr);
-        m_vkContext.m_device.destroyImageView(m_depthImageView, nullptr);
         m_vkContext.m_device.destroyFramebuffer(m_offscreenFramebuffer, nullptr);
+
         m_vkContext.m_device.destroyRenderPass(m_offscreenRenderPass, nullptr);
 
         for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
@@ -429,7 +496,7 @@ private:
 
     vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
         for (const auto& availableFormat : availableFormats) {
-            if (availableFormat.format == vk::Format::eB8G8R8A8Unorm &&
+            if (availableFormat.format == vk::Format::eB8G8R8A8Srgb &&
                 availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
                 return availableFormat;
             }
@@ -546,7 +613,7 @@ private:
         vk::RenderPass renderPass;
 
         vk::AttachmentDescription colorAttachment { 
-            .format = vk::Format::eB8G8R8A8Unorm, 
+            .format = vk::Format::eB8G8R8A8Srgb, 
             .samples = vk::SampleCountFlagBits::e1,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
@@ -618,10 +685,20 @@ private:
             .stageFlags = vk::ShaderStageFlagBits::eVertex,
             .pImmutableSamplers = nullptr
         };
+
+        vk::DescriptorSetLayoutBinding samplerLayoutBinding {
+            .binding = 1,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eFragment,
+            .pImmutableSamplers = nullptr
+        };
+
+        std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
         
         vk::DescriptorSetLayoutCreateInfo layoutInfo { 
-            .bindingCount = 1,
-            .pBindings = &uboLayoutBinding 
+            .bindingCount = static_cast<uint32_t>(bindings.size()),
+            .pBindings = bindings.data()
         };
         
         if (m_vkContext.m_device.createDescriptorSetLayout(&layoutInfo, nullptr, &m_offscreenDescriptorSetLayout) != vk::Result::eSuccess) {
@@ -1007,7 +1084,7 @@ private:
 
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load("textures/viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         vk::DeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
@@ -1043,13 +1120,18 @@ private:
         m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
     }
 
+    void createTextureImageView() {
+        m_textureImageView = createImageView(m_textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+    }
+
     void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Image& image, vk::DeviceMemory& imageMemory) {
         vk::ImageCreateInfo imageInfo { 
             .imageType = vk::ImageType::e2D, 
             .format = format,
-            .extent = { .width = width,
-                        .height = height,
-                        .depth = 1 },
+            .extent = { 
+                .width = width,
+                .height = height,
+                .depth = 1 },
             .mipLevels = 1,
             .arrayLayers = 1,
             .samples = vk::SampleCountFlagBits::e1,
@@ -1099,6 +1181,33 @@ private:
         }
 
         return imageView;
+    }
+
+    void createTextureSampler() {
+        vk::PhysicalDeviceProperties properties{};
+        m_vkContext.m_physicalDevice.getProperties(&properties);
+
+        vk::SamplerCreateInfo samplerInfo {
+            .magFilter = vk::Filter::eLinear,
+            .minFilter = vk::Filter::eLinear,
+            .mipmapMode = vk::SamplerMipmapMode::eLinear,
+            .addressModeU = vk::SamplerAddressMode::eRepeat,
+            .addressModeV = vk::SamplerAddressMode::eRepeat,
+            .addressModeW = vk::SamplerAddressMode::eRepeat,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = VK_TRUE,
+            .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+            .compareEnable = VK_FALSE,
+            .compareOp = vk::CompareOp::eAlways,
+            .minLod = 0.0f,
+            .maxLod = 0.0f,
+            .borderColor = vk::BorderColor::eIntOpaqueBlack,
+            .unnormalizedCoordinates = VK_FALSE
+        };
+
+        if (m_vkContext.m_device.createSampler(&samplerInfo, nullptr, &m_textureSampler) != vk::Result::eSuccess) {
+            throw std::runtime_error("failed to create texture sampler!");
+        }
     }
 
     void createSampler() {
@@ -1274,7 +1383,7 @@ private:
     }
 
     void createVertexBuffer() {
-        vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+        vk::DeviceSize bufferSize = sizeof(m_vertices[0]) * m_vertices.size();
         
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingBufferMemory;
@@ -1282,7 +1391,7 @@ private:
 
         void* data;
         data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
-            memcpy(data, vertices.data(), (size_t)bufferSize);
+            memcpy(data, m_vertices.data(), (size_t)bufferSize);
         m_vkContext.m_device.unmapMemory(stagingBufferMemory);
 
         createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vertexBuffer, m_vertexBufferMemory);
@@ -1294,7 +1403,7 @@ private:
     }
 
     void createIndexBuffer() {
-        vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+        vk::DeviceSize bufferSize = sizeof(m_indices[0]) * m_indices.size();
         
         vk::Buffer stagingBuffer;
         vk::DeviceMemory stagingBufferMemory;
@@ -1302,7 +1411,7 @@ private:
 
         void* data;
         data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
-            memcpy(data, indices.data(), (size_t)bufferSize);
+            memcpy(data, m_indices.data(), (size_t)bufferSize);
         m_vkContext.m_device.unmapMemory(stagingBufferMemory);
 
         createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, m_indexBuffer, m_indexBufferMemory);
@@ -1402,13 +1511,19 @@ private:
     }
     
     void createOffscreenDescriptorPool() {
-        vk::DescriptorPoolSize poolSize {
-            .descriptorCount = static_cast<uint32_t>(kMaxFramesInFlight)
-        };
+        std::array<vk::DescriptorPoolSize, 2> poolSizes{}; 
+        
+        poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(kMaxFramesInFlight);
+        
+        poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
+        poolSizes[1].descriptorCount = static_cast<uint32_t>(kMaxFramesInFlight);
+        
+        
         vk::DescriptorPoolCreateInfo poolInfo { 
             .maxSets = static_cast<uint32_t>(kMaxFramesInFlight),
-            .poolSizeCount = 1,
-            .pPoolSizes = &poolSize
+            .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+            .pPoolSizes = poolSizes.data()
         };
     
         if (m_vkContext.m_device.createDescriptorPool(&poolInfo, nullptr, &m_offscreenDescriptorPool) != vk::Result::eSuccess) {
@@ -1432,8 +1547,14 @@ private:
             .offset = 0,
             .range = sizeof(UniformBufferObject)
         };
+
+        vk::DescriptorImageInfo imageInfo {
+            .sampler = m_textureSampler,
+            .imageView = m_textureImageView,
+            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+        };
         
-        vk::WriteDescriptorSet descriptorWrite { 
+        vk::WriteDescriptorSet uniformBufferWrite = { 
             .dstSet = m_offscreenDescriptorSets,
             .dstBinding = 0,
             .dstArrayElement = 0,
@@ -1443,9 +1564,22 @@ private:
             .pBufferInfo = &bufferInfo,
             .pTexelBufferView = nullptr
         };
+        vk::WriteDescriptorSet combinedSamplerWrite = { 
+            .dstSet = m_offscreenDescriptorSets,
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .pImageInfo = &imageInfo
+        };
+
+        vk::WriteDescriptorSet descriptorWrites[] = {
+            uniformBufferWrite,
+            combinedSamplerWrite
+        };
         
-        m_vkContext.m_device.updateDescriptorSets(1, &descriptorWrite, 0, nullptr);
-}
+        m_vkContext.m_device.updateDescriptorSets(static_cast<uint32_t>(std::size(descriptorWrites)), descriptorWrites, 0, nullptr);
+    }
 
     void createGuiDescriptorSetLayout() {
         vk::DescriptorSetLayoutBinding samplerLayoutBinding { 
@@ -1617,7 +1751,7 @@ private:
         commandBuffer.bindVertexBuffers(0, 1, vertexBuffers, offsets);
         commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
         commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_graphicsPipelineLayout, 0, 1, &m_offscreenDescriptorSets, 0, nullptr);
-        commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        commandBuffer.drawIndexed(static_cast<uint32_t>(m_indices.size()), 1, 0, 0, 0);
 
         commandBuffer.endRenderPass();
     }

@@ -17,7 +17,6 @@ target_include_directories(vulkan_render_base PRIVATE ext)
 target_include_directories(vulkan_render_base PRIVATE ext/imgui)
 target_include_directories(vulkan_render_base PRIVATE ext/imgui/backends)
 
-# imgui
 target_sources(vulkan_render_base PRIVATE
     ext/imgui/imgui.cpp
     ext/imgui/imgui_demo.cpp
@@ -59,3 +58,4 @@ add_dependencies(vulkan_render_base shaders)
 
 # copy texture assets
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/textures DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ${CMAKE_CURRENT_LIST_DIR}/models DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

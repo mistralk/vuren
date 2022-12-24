@@ -165,7 +165,9 @@ void VulkanContext::createLogicalDevice() {
     // you can create all of the command buffers on multiple threads and then 
     // submit them all at once on the main thread with a single low-overhead call."
 
-    vk::PhysicalDeviceFeatures deviceFeatures{};
+    vk::PhysicalDeviceFeatures deviceFeatures {
+        .samplerAnisotropy = VK_TRUE
+    };
 
     vk::DeviceCreateInfo createInfo{ 
         .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
@@ -196,11 +198,16 @@ bool VulkanContext::isDeviceSuitable(vk::PhysicalDevice device) {
     QueueFamilyIndices indices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
     bool swapChainAdequate = false;
+
     if (extensionsSupported) {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
-    return indices.isComplete() && extensionsSupported && swapChainAdequate;
+
+    vk::PhysicalDeviceFeatures supportedFeatures;
+    device.getFeatures(&supportedFeatures);
+
+    return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
 }
 
 SwapChainSupportDetails VulkanContext::querySwapChainSupport(vk::PhysicalDevice device) {
