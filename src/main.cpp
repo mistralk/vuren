@@ -113,8 +113,6 @@ private:
     vk::Extent2D m_swapChainExtent;
     std::vector<vk::ImageView> m_swapChainImageViews;
     uint32_t m_imageCount;
-
-    // base rendering swap chain
     std::vector<vk::Framebuffer> m_swapChainFramebuffers;
 
     vk::CommandPool m_commandPool;
@@ -142,8 +140,8 @@ private:
     // for the offscreen pass
     vk::RenderPass m_offscreenRenderPass {VK_NULL_HANDLE};
     vk::Framebuffer m_offscreenFramebuffer;
-    vk::PipelineLayout m_graphicsPipelineLayout;
-    vk::Pipeline m_graphicsPipeline;
+    vk::PipelineLayout m_offscreenPipelineLayout;
+    vk::Pipeline m_offscreenPipeline;
 
     vk::DescriptorSetLayout m_offscreenDescriptorSetLayout;
     vk::DescriptorSet m_offscreenDescriptorSets;
@@ -162,13 +160,14 @@ private:
     uint32_t m_currentFrame = 0;
     bool m_framebufferResized = false;
 
-    // for the gui pass
-    vk::RenderPass m_guiRenderPass {VK_NULL_HANDLE};
-    vk::Pipeline m_guiPipeline;
-    vk::PipelineLayout m_guiPipelineLayout;
-    vk::DescriptorSetLayout m_guiDescriptorSetLayout;
-    std::vector<vk::DescriptorSet> m_guiDescriptorSets;
-    vk::DescriptorPool m_guiDescriptorPool;
+    // for the final pass and gui
+    // this pass is directly presented into swap chain framebuffers
+    vk::RenderPass m_finalRenderPass {VK_NULL_HANDLE};
+    vk::Pipeline m_finalPipeline;
+    vk::PipelineLayout m_finalPipelineLayout;
+    vk::DescriptorSetLayout m_finalDescriptorSetLayout;
+    std::vector<vk::DescriptorSet> m_finalDescriptorSets;
+    vk::DescriptorPool m_finalDescriptorPool;
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
 
     // for obj models
@@ -226,7 +225,9 @@ private:
                                                .ImageCount = m_imageCount,
                                                .MSAASamples = VK_SAMPLE_COUNT_1_BIT };
         
-        ImGui_ImplVulkan_Init(&initInfo, m_guiRenderPass);
+        ImGui_ImplVulkan_Init(&initInfo, m_finalRenderPass);
+
+        ImGui::StyleColorsClassic();
 
         // execute a GPU command to upload imgui font textures
         vk::CommandBuffer commandBuffer = beginSingleTimeCommands();
@@ -235,11 +236,17 @@ private:
         ImGui_ImplVulkan_DestroyFontUploadObjects();
     }
 
-    void updateGUI() {
+    void updateGUI(float deltaTime) {
         // ImGui_ImplVulkan_NewFrame(); // do i need it?
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        ImGui::ShowDemoWindow();
+        auto imguiIO = ImGui::GetIO();
+        imguiIO.DeltaTime = deltaTime;
+
+        ImGui::Begin("Render Configuration");
+        ImGui::Text("Statistics");
+        ImGui::Text(" %.2f FPS (%.2f ms)", imguiIO.Framerate, imguiIO.DeltaTime);
+        ImGui::End();
     }
 
     void initWindow() {
@@ -355,8 +362,8 @@ private:
 
     void createGuiRender() {
         // create the renderpass for gui
-        if (!m_guiRenderPass) {
-            m_guiRenderPass = createFinalRenderPass();
+        if (!m_finalRenderPass) {
+            m_finalRenderPass = createFinalRenderPass();
         }
 
         // create the framebuffer for gui
@@ -365,14 +372,15 @@ private:
 
     void mainLoop() {
         Timer timer;
-        auto deltaTime = timer.stop();
 
         while (!glfwWindowShouldClose(m_pWindow)) {
+            float deltaTime = static_cast<float>(timer.elapsed());
             glfwPollEvents();
             
-            updateGUI();
+            updateGUI(deltaTime);
+            // updateScene(deltaTime)
 
-            drawFrame(deltaTime);
+            drawFrame();
         }
 
         m_vkContext.m_device.waitIdle();
@@ -405,10 +413,10 @@ private:
         m_vkContext.m_device.destroyDescriptorPool(m_offscreenDescriptorPool, nullptr);
         m_vkContext.m_device.destroyDescriptorSetLayout(m_offscreenDescriptorSetLayout, nullptr);
 
-        m_vkContext.m_device.destroyPipeline(m_graphicsPipeline, nullptr);
-        m_vkContext.m_device.destroyPipelineLayout(m_graphicsPipelineLayout, nullptr);
+        m_vkContext.m_device.destroyPipeline(m_offscreenPipeline, nullptr);
+        m_vkContext.m_device.destroyPipelineLayout(m_offscreenPipelineLayout, nullptr);
 
-        // cleanup gui pass data
+        // cleanup final render pass data
 
         ImGui_ImplVulkan_Shutdown();
         cleanupSwapChain();
@@ -417,14 +425,14 @@ private:
         m_vkContext.m_device.freeMemory(m_vertexBufferMemory, nullptr);
         m_vkContext.m_device.destroyBuffer(m_indexBuffer, nullptr);
         m_vkContext.m_device.freeMemory(m_indexBufferMemory, nullptr);
-        m_vkContext.m_device.destroyRenderPass(m_guiRenderPass, nullptr);
+        m_vkContext.m_device.destroyRenderPass(m_finalRenderPass, nullptr);
 
-        m_vkContext.m_device.destroyDescriptorPool(m_guiDescriptorPool, nullptr);
-        m_vkContext.m_device.destroyDescriptorSetLayout(m_guiDescriptorSetLayout, nullptr);
+        m_vkContext.m_device.destroyDescriptorPool(m_finalDescriptorPool, nullptr);
+        m_vkContext.m_device.destroyDescriptorSetLayout(m_finalDescriptorSetLayout, nullptr);
         m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
 
-        m_vkContext.m_device.destroyPipeline(m_guiPipeline, nullptr);
-        m_vkContext.m_device.destroyPipelineLayout(m_guiPipelineLayout, nullptr);
+        m_vkContext.m_device.destroyPipeline(m_finalPipeline, nullptr);
+        m_vkContext.m_device.destroyPipelineLayout(m_finalPipelineLayout, nullptr);
 
         for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
             m_vkContext.m_device.destroySemaphore(m_imageAvailableSemaphores[i], nullptr);
@@ -829,7 +837,7 @@ private:
             .pPushConstantRanges = nullptr
         };
 
-        if (m_vkContext.m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_graphicsPipelineLayout) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_offscreenPipelineLayout) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
 
@@ -844,14 +852,14 @@ private:
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = m_graphicsPipelineLayout,
+            .layout = m_offscreenPipelineLayout,
             .renderPass = m_offscreenRenderPass,
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = -1
         };
 
-        if (m_vkContext.m_device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_graphicsPipeline) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_offscreenPipeline) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
 
@@ -975,12 +983,12 @@ private:
 
         vk::PipelineLayoutCreateInfo pipelineLayoutInfo { 
             .setLayoutCount = 1,
-            .pSetLayouts = &m_guiDescriptorSetLayout,
+            .pSetLayouts = &m_finalDescriptorSetLayout,
             .pushConstantRangeCount = 0,
             .pPushConstantRanges = nullptr
         };
 
-        if (m_vkContext.m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_guiPipelineLayout) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_finalPipelineLayout) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create gui pipeline layout!");
         }
 
@@ -995,14 +1003,14 @@ private:
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = m_guiPipelineLayout,
-            .renderPass = m_guiRenderPass,
+            .layout = m_finalPipelineLayout,
+            .renderPass = m_finalRenderPass,
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = -1
         };
 
-        if (m_vkContext.m_device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_guiPipeline) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_finalPipeline) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create gui graphics pipeline!");
         }
 
@@ -1056,7 +1064,7 @@ private:
             };
 
             vk::FramebufferCreateInfo framebufferInfo { 
-                .renderPass = m_guiRenderPass,
+                .renderPass = m_finalRenderPass,
                 .attachmentCount = static_cast<uint32_t>(attachments.size()),
                 .pAttachments = attachments.data(),
                 .width = m_swapChainExtent.width,
@@ -1597,7 +1605,7 @@ private:
             .pBindings = bindings.data()
         };
         
-        if (m_vkContext.m_device.createDescriptorSetLayout(&layoutInfo, nullptr, &m_guiDescriptorSetLayout) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createDescriptorSetLayout(&layoutInfo, nullptr, &m_finalDescriptorSetLayout) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create gui descriptor set layout!");
         }
     }
@@ -1613,23 +1621,23 @@ private:
             .pPoolSizes = poolSizes.data()
         };
     
-        if (m_vkContext.m_device.createDescriptorPool(&poolInfo, nullptr, &m_guiDescriptorPool) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createDescriptorPool(&poolInfo, nullptr, &m_finalDescriptorPool) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create gui descriptor pool!");
         }
     }
 
     void updateGuiDescriptorSets() {
-        if (m_guiDescriptorSets.empty()) {
-            std::vector<vk::DescriptorSetLayout> layouts(kMaxFramesInFlight, m_guiDescriptorSetLayout);
+        if (m_finalDescriptorSets.empty()) {
+            std::vector<vk::DescriptorSetLayout> layouts(kMaxFramesInFlight, m_finalDescriptorSetLayout);
             vk::DescriptorSetAllocateInfo allocInfo { 
-                .descriptorPool = m_guiDescriptorPool,
+                .descriptorPool = m_finalDescriptorPool,
                 .descriptorSetCount = static_cast<uint32_t>(kMaxFramesInFlight),
                 .pSetLayouts = layouts.data()
             };
             
-            m_guiDescriptorSets.resize(kMaxFramesInFlight);
+            m_finalDescriptorSets.resize(kMaxFramesInFlight);
 
-            if (m_vkContext.m_device.allocateDescriptorSets(&allocInfo, m_guiDescriptorSets.data()) != vk::Result::eSuccess) {
+            if (m_vkContext.m_device.allocateDescriptorSets(&allocInfo, m_finalDescriptorSets.data()) != vk::Result::eSuccess) {
                 throw std::runtime_error("failed to allocate gui descriptor sets!");
             }
         }
@@ -1640,7 +1648,7 @@ private:
             m_colorImageDescriptor.sampler = m_colorImageSampler;
 
             vk::WriteDescriptorSet descriptorWrite { 
-                .dstSet = m_guiDescriptorSets[i],
+                .dstSet = m_finalDescriptorSets[i],
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -1728,7 +1736,7 @@ private:
         
         commandBuffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_graphicsPipeline);
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_offscreenPipeline);
 
         vk::Viewport viewport { 
             .x = 0.0f,
@@ -1750,7 +1758,7 @@ private:
         vk::DeviceSize offsets[] = {0};
         commandBuffer.bindVertexBuffers(0, 1, vertexBuffers, offsets);
         commandBuffer.bindIndexBuffer(m_indexBuffer, 0, vk::IndexType::eUint32);
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_graphicsPipelineLayout, 0, 1, &m_offscreenDescriptorSets, 0, nullptr);
+        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_offscreenPipelineLayout, 0, 1, &m_offscreenDescriptorSets, 0, nullptr);
         commandBuffer.drawIndexed(static_cast<uint32_t>(m_indices.size()), 1, 0, 0, 0);
 
         commandBuffer.endRenderPass();
@@ -1762,7 +1770,7 @@ private:
         clearValues[1].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
 
         vk::RenderPassBeginInfo renderPassInfo { 
-            .renderPass = m_guiRenderPass,
+            .renderPass = m_finalRenderPass,
             .framebuffer = m_swapChainFramebuffers[imageIndex],
             .renderArea { 
                 .offset = {0, 0},
@@ -1773,7 +1781,7 @@ private:
         
         commandBuffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_guiPipeline);
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_finalPipeline);
 
         vk::Viewport viewport { 
             .x = 0.0f,
@@ -1791,7 +1799,7 @@ private:
         };
         commandBuffer.setScissor(0, 1, &scissor);
 
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_guiPipelineLayout, 0, 1, &m_guiDescriptorSets[m_currentFrame], 0, nullptr);
+        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_finalPipelineLayout, 0, 1, &m_finalDescriptorSets[m_currentFrame], 0, nullptr);
         
         commandBuffer.draw(3, 1, 0, 0);
 
@@ -1818,7 +1826,7 @@ private:
         }
     }
 
-    void drawFrame(double deltaTime) {
+    void drawFrame() {
         vk::Result result;
 
         // at the start of the frame, we want to wait until the previous frame has finished

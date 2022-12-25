@@ -10,8 +10,10 @@ void Timer::reset() {
     m_start = std::chrono::steady_clock::now();
 }
 
-double Timer::stop() {
-    auto elapsed = std::chrono::duration<double, Milliseconds>(std::chrono::steady_clock::now() - m_start);
+double Timer::elapsed() {
+    auto currentTime = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration<double, Milliseconds>(currentTime - m_start);
+    m_start = currentTime;
     return elapsed.count();
 }
 

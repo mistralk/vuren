@@ -13,7 +13,7 @@ public:
     ~Timer() = default;
 
     void reset();
-    double stop();
+    double elapsed();
 
 private:
     std::chrono::steady_clock::time_point m_start;
