@@ -16,10 +16,9 @@ Currently it has only been tested on Ubuntu 22.04.
 - [x] Vulkan context initialization
 - [x] Multiple render passes
 - [x] Loading OBJ data
-- [ ] GUI and basic statistics
+- [x] GUI and basic statistics
 - [ ] Render skeleton for both rasterization and ray tracing
 - [ ] Reference unbiased path tracer
-- [ ] Camera manipulation
 
 ## Good references and resources
 

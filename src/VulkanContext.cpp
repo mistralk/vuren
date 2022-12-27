@@ -75,7 +75,7 @@ void VulkanContext::createInstance() {
         instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
         vk::StructureChain<vk::InstanceCreateInfo, vk::ValidationFeaturesEXT, vk::DebugUtilsMessengerCreateInfoEXT> chain = {instanceCreateInfo, validationFeatures, debugCreateInfo};
-        m_instance = vk::createInstance(chain.get<vk::InstanceCreateInfo>());
+        m_instance = vk::createInstance(chain.get<vk::InstanceCreateInfo>()), nullptr;
         return;
     }
     else {
@@ -169,13 +169,21 @@ void VulkanContext::createLogicalDevice() {
         .samplerAnisotropy = VK_TRUE
     };
 
-    vk::DeviceCreateInfo createInfo{ 
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{};
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{};
+
+    vk::DeviceCreateInfo createInfo { 
+        // .pNext = &accelFeature,
         .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
         .pQueueCreateInfos = queueCreateInfos.data(),
         .enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size()),
         .ppEnabledExtensionNames = kDeviceExtensions.data(),
         .pEnabledFeatures = &deviceFeatures 
     };
+
+    vk::StructureChain<vk::DeviceCreateInfo, 
+                    vk::PhysicalDeviceAccelerationStructureFeaturesKHR, 
+                    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> chain = {createInfo, accelFeature, rtPipelineFeature};
 
     if (kEnableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());
@@ -185,9 +193,11 @@ void VulkanContext::createLogicalDevice() {
         createInfo.enabledLayerCount = 0;
     }
 
-    if (m_physicalDevice.createDevice(&createInfo, nullptr, &m_device) != vk::Result::eSuccess) {
-        throw std::runtime_error("failed to create logical device!");
-    }
+    m_device = m_physicalDevice.createDevice(chain.get<vk::DeviceCreateInfo>(), nullptr);
+
+    // if (m_physicalDevice.createDevice(&createInfo, nullptr, &m_device) != vk::Result::eSuccess) {
+    //     throw std::runtime_error("failed to create logical device!");
+    // }
 
     m_graphicsQueue = m_device.getQueue(indices.graphicsFamily.value(), 0);
     m_presentQueue = m_device.getQueue(indices.presentFamily.value(), 0);

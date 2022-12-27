@@ -286,11 +286,11 @@ private:
         createOffscreenDescriptorPool();
         createOffscreenDescriptorSets();
 
-        createGuiRender();
-        createGuiDescriptorSetLayout();
-        createGuiPipeline();
-        createGuiDescriptorPool();
-        updateGuiDescriptorSets();
+        createFinalRender();
+        createFinalDescriptorSetLayout();
+        createFinalPipeline();
+        createFinalDescriptorPool();
+        updateFinalDescriptorSets();
 
         createCommandBuffers();
         createSyncObjects();
@@ -360,7 +360,7 @@ private:
         createOffscreenFramebuffer();
     }
 
-    void createGuiRender() {
+    void createFinalRender() {
         // create the renderpass for gui
         if (!m_finalRenderPass) {
             m_finalRenderPass = createFinalRenderPass();
@@ -514,7 +514,7 @@ private:
 
     vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
         for (const auto& availablePresentMode : availablePresentModes) {
-            if (availablePresentMode == vk::PresentModeKHR::eMailbox) {
+            if (availablePresentMode == vk::PresentModeKHR::eImmediate) {
                 return availablePresentMode;
             }
         }
@@ -867,7 +867,7 @@ private:
         m_vkContext.m_device.destroyShaderModule(vertShaderModule, nullptr);
     }
 
-    void createGuiPipeline() {
+    void createFinalPipeline() {
         auto vertShaderCode = readFile("shaders/final.vert.spv");
         auto fragShaderCode = readFile("shaders/final.frag.spv");
 
@@ -1589,7 +1589,7 @@ private:
         m_vkContext.m_device.updateDescriptorSets(static_cast<uint32_t>(std::size(descriptorWrites)), descriptorWrites, 0, nullptr);
     }
 
-    void createGuiDescriptorSetLayout() {
+    void createFinalDescriptorSetLayout() {
         vk::DescriptorSetLayoutBinding samplerLayoutBinding { 
             .binding = 0,
             .descriptorType = vk::DescriptorType::eCombinedImageSampler,
@@ -1610,7 +1610,7 @@ private:
         }
     }
 
-    void createGuiDescriptorPool() {
+    void createFinalDescriptorPool() {
         std::array<vk::DescriptorPoolSize, 1> poolSizes{};
         poolSizes[0].type = vk::DescriptorType::eCombinedImageSampler;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(kMaxFramesInFlight);
@@ -1626,7 +1626,7 @@ private:
         }
     }
 
-    void updateGuiDescriptorSets() {
+    void updateFinalDescriptorSets() {
         if (m_finalDescriptorSets.empty()) {
             std::vector<vk::DescriptorSetLayout> layouts(kMaxFramesInFlight, m_finalDescriptorSetLayout);
             vk::DescriptorSetAllocateInfo allocInfo { 
@@ -1954,7 +1954,7 @@ private:
         createSwapChainFrameBuffers();
 
         createOffscreenRender();
-        updateGuiDescriptorSets();
+        updateFinalDescriptorSets();
     }
 };
 
