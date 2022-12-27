@@ -31,6 +31,7 @@
 #include <unordered_map>
 
 #include "VulkanContext.hpp"
+#include "Texture.hpp"
 #include "Utils.hpp"
 #include "Timer.hpp"
 
@@ -108,12 +109,15 @@ private:
     VulkanContext m_vkContext;
 
     vk::SwapchainKHR m_swapChain;
-    std::vector<vk::Image> m_swapChainImages;
     vk::Format m_swapChainImageFormat;
     vk::Extent2D m_swapChainExtent;
-    std::vector<vk::ImageView> m_swapChainImageViews;
-    uint32_t m_imageCount;
     std::vector<vk::Framebuffer> m_swapChainFramebuffers;
+    uint32_t m_imageCount;
+
+    // swap chain
+    std::vector<vk::Image> m_swapChainColorImages;
+    std::vector<vk::ImageView> m_swapChainColorImageViews;
+    Texture m_swapChainDepthImage;
 
     vk::CommandPool m_commandPool;
     std::vector<vk::CommandBuffer> m_commandBuffers;
@@ -122,6 +126,7 @@ private:
     std::vector<vk::Semaphore> m_renderFinishedSemaphores;
     std::vector<vk::Fence> m_inFlightFences;
 
+    // scene description
     vk::Buffer m_vertexBuffer;
     vk::DeviceMemory m_vertexBufferMemory;
     vk::Buffer m_indexBuffer;
@@ -131,11 +136,7 @@ private:
     std::vector<vk::DeviceMemory> m_uniformBuffersMemory;
     std::vector<void*> m_uniformBuffersMapped;
 
-    // for model texture
-    vk::Image m_textureImage;
-    vk::ImageView m_textureImageView;
-    vk::DeviceMemory m_textureImageMemory;
-    vk::Sampler m_textureSampler;
+    Texture m_modelTexture;
 
     // for the offscreen pass
     vk::RenderPass m_offscreenRenderPass {VK_NULL_HANDLE};
@@ -147,15 +148,8 @@ private:
     vk::DescriptorSet m_offscreenDescriptorSets;
     vk::DescriptorPool m_offscreenDescriptorPool;
 
-    vk::Image m_colorImage;
-    vk::DeviceMemory m_colorImageMemory;
-    vk::ImageView m_colorImageView;
-    vk::Sampler m_colorImageSampler;
-    vk::DescriptorImageInfo m_colorImageDescriptor;
-
-    vk::Image m_depthImage;
-    vk::DeviceMemory m_depthImageMemory;
-    vk::ImageView m_depthImageView;
+    Texture m_offscreenColorImage;
+    Texture m_offscreenDepthImage;
 
     uint32_t m_currentFrame = 0;
     bool m_framebufferResized = false;
@@ -270,15 +264,15 @@ private:
         m_vkContext.init("test", m_pWindow);
         
         createSwapChain();
-        createImageViews();
+        createSwapChainImageViews();
         createCommandPool();
 
         createOffscreenRender();
         createOffscreenDescriptorSetLayout();
         createGraphicsPipeline();
-        createTextureImage();
-        createTextureImageView();
-        createTextureSampler();
+        createModelTextureImage();
+        createModelTextureImageView();
+        createModelTextureSampler();
         loadModel();
         createVertexBuffer();
         createIndexBuffer();
@@ -337,19 +331,18 @@ private:
 
     void createOffscreenRender() {
         // create the color image        
-        createImage(m_swapChainExtent.width, m_swapChainExtent.height, 
+        createImage(m_offscreenColorImage,
+            m_swapChainExtent.width, m_swapChainExtent.height, 
             vk::Format::eR32G32B32A32Sfloat, 
             vk::ImageTiling::eOptimal, 
             vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
-            vk::MemoryPropertyFlagBits::eDeviceLocal, 
-            m_colorImage, m_colorImageMemory);
-        m_colorImageView = createImageView(m_colorImage, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
-        createSampler();
-
-        transitionImageLayout(m_colorImage, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
+            vk::MemoryPropertyFlagBits::eDeviceLocal);
+        createImageView(m_offscreenColorImage, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
+        createSampler(m_offscreenColorImage);
+        transitionImageLayout(m_offscreenColorImage, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
         
         // create the depth image
-        createDepthResources();
+        createDepthResources(m_offscreenDepthImage);
 
         // create the renderpass for offscreen
         if (!m_offscreenRenderPass) {
@@ -361,6 +354,8 @@ private:
     }
 
     void createFinalRender() {
+        createDepthResources(m_swapChainDepthImage);
+
         // create the renderpass for gui
         if (!m_finalRenderPass) {
             m_finalRenderPass = createFinalRenderPass();
@@ -388,20 +383,9 @@ private:
 
     void cleanup() {
         // cleanup offscreen data
-        m_vkContext.m_device.destroyImageView(m_textureImageView, nullptr);
-        m_vkContext.m_device.destroyImage(m_textureImage, nullptr);
-        m_vkContext.m_device.freeMemory(m_textureImageMemory, nullptr);
-        m_vkContext.m_device.destroySampler(m_textureSampler, nullptr);
+        destroyTexture(m_vkContext.m_device, m_modelTexture);
 
-        m_vkContext.m_device.destroyImageView(m_colorImageView, nullptr);
-        m_vkContext.m_device.destroyImage(m_colorImage, nullptr);
-        m_vkContext.m_device.freeMemory(m_colorImageMemory, nullptr);
-        m_vkContext.m_device.destroySampler(m_colorImageSampler, nullptr);
-
-        m_vkContext.m_device.destroyImageView(m_depthImageView, nullptr);
-        m_vkContext.m_device.destroyImage(m_depthImage, nullptr);
-        m_vkContext.m_device.freeMemory(m_depthImageMemory, nullptr);
-        m_vkContext.m_device.destroyFramebuffer(m_offscreenFramebuffer, nullptr);
+        cleanupOffscreenResources();
 
         m_vkContext.m_device.destroyRenderPass(m_offscreenRenderPass, nullptr);
 
@@ -494,8 +478,8 @@ private:
         if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &m_imageCount, nullptr) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to get swap chain imageCount!");
         }
-        m_swapChainImages.resize(m_imageCount);
-        if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &m_imageCount, m_swapChainImages.data()) != vk::Result::eSuccess) {
+        m_swapChainColorImages.resize(m_imageCount);
+        if (m_vkContext.m_device.getSwapchainImagesKHR(m_swapChain, &m_imageCount, m_swapChainColorImages.data()) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to get swap chain!");
         }
         m_swapChainImageFormat = surfaceFormat.format;
@@ -540,11 +524,25 @@ private:
         }
     }
 
-    void createImageViews() {
-        m_swapChainImageViews.resize(m_swapChainImages.size());
+    void createSwapChainImageViews() {
+        m_swapChainColorImageViews.resize(m_swapChainColorImages.size());
 
-        for (size_t i = 0; i < m_swapChainImages.size(); ++i) {
-            m_swapChainImageViews[i] = createImageView(m_swapChainImages[i], m_swapChainImageFormat, vk::ImageAspectFlagBits::eColor);
+        for (size_t i = 0; i < m_swapChainColorImageViews.size(); ++i) {
+            vk::ImageViewCreateInfo viewInfo { 
+                .image = m_swapChainColorImages[i],
+                .viewType = vk::ImageViewType::e2D,
+                .format = m_swapChainImageFormat,
+                .subresourceRange = { 
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1 } 
+            };
+
+            if (m_vkContext.m_device.createImageView(&viewInfo, nullptr, &m_swapChainColorImageViews[i]) != vk::Result::eSuccess) {
+                throw std::runtime_error("failed to create swap chain image view!");
+            }
         }
     }
 
@@ -1033,8 +1031,8 @@ private:
 
     void createOffscreenFramebuffer() {
         std::array<vk::ImageView, 2> attachments = {
-            m_colorImageView,
-            m_depthImageView
+            m_offscreenColorImage.descriptorInfo.imageView,
+            m_offscreenDepthImage.descriptorInfo.imageView
         };
 
         vk::FramebufferCreateInfo framebufferInfo { 
@@ -1052,15 +1050,15 @@ private:
     }
 
     void createSwapChainFrameBuffers() {
-        m_swapChainFramebuffers.resize(m_swapChainImageViews.size());
+        m_swapChainFramebuffers.resize(m_swapChainColorImageViews.size());
 
-        for (size_t i = 0; i < m_swapChainImageViews.size(); ++i) {
+        for (size_t i = 0; i < m_swapChainColorImageViews.size(); ++i) {
             // Color attachment differs for every swap chain image,
             // but the same depth image can be used by all of them
             // because only a single subpass is running at the same time due to out semaphores
             std::array<vk::ImageView, 2> attachments = {
-                m_swapChainImageViews[i],
-                m_depthImageView
+                m_swapChainColorImageViews[i],
+                m_swapChainDepthImage.descriptorInfo.imageView
             };
 
             vk::FramebufferCreateInfo framebufferInfo { 
@@ -1090,7 +1088,7 @@ private:
         }
     }
 
-    void createTextureImage() {
+    void createModelTextureImage() {
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load("textures/viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         vk::DeviceSize imageSize = texWidth * texHeight * 4;
@@ -1110,29 +1108,29 @@ private:
 
         stbi_image_free(pixels);
 
-        createImage(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, m_textureImage, m_textureImageMemory);
+        createImage(m_modelTexture, texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
     
         // Transition the texture image to ImageLayout::eTransferDstOptimal
         // The image was create with the ImageLayout::eUndefined layout
         // Because we don't care about its contents before performing the copy operation
-        transitionImageLayout(m_textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+        transitionImageLayout(m_modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
         // Execute the staging buffer to image copy operation
-        copyBufferToImage(stagingBuffer, m_textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+        copyBufferToImage(stagingBuffer, m_modelTexture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
         
         // To be able to start sampling from the texture image in the shader,
         // need one last transition to prepare it for shader access
-        transitionImageLayout(m_textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+        transitionImageLayout(m_modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
     
         m_vkContext.m_device.destroyBuffer(stagingBuffer, nullptr);
         m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
     }
 
-    void createTextureImageView() {
-        m_textureImageView = createImageView(m_textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+    void createModelTextureImageView() {
+        createImageView(m_modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
     }
 
-    void createImage(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Image& image, vk::DeviceMemory& imageMemory) {
+    void createImage(Texture& texture, uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) {
         vk::ImageCreateInfo imageInfo { 
             .imageType = vk::ImageType::e2D, 
             .format = format,
@@ -1151,28 +1149,28 @@ private:
             .initialLayout = vk::ImageLayout::eUndefined
         };
         
-        if (m_vkContext.m_device.createImage(&imageInfo, nullptr, &image) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createImage(&imageInfo, nullptr, &texture.image) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create image!");
         }
 
         vk::MemoryRequirements memRequirements;
-        m_vkContext.m_device.getImageMemoryRequirements(image, &memRequirements);
+        m_vkContext.m_device.getImageMemoryRequirements(texture.image, &memRequirements);
 
         vk::MemoryAllocateInfo allocInfo { 
             .allocationSize = memRequirements.size,
             .memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties) 
         };
         
-        if (m_vkContext.m_device.allocateMemory(&allocInfo, nullptr, &imageMemory) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.allocateMemory(&allocInfo, nullptr, &texture.memory) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to allocate image memory!");
         }
 
-        m_vkContext.m_device.bindImageMemory(image, imageMemory, 0);
+        m_vkContext.m_device.bindImageMemory(texture.image, texture.memory, 0);
     }
 
-    vk::ImageView createImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspectFlags) {
+    void createImageView(Texture& texture, vk::Format format, vk::ImageAspectFlags aspectFlags) {
         vk::ImageViewCreateInfo viewInfo { 
-            .image = image,
+            .image = texture.image,
             .viewType = vk::ImageViewType::e2D,
             .format = format,
             .subresourceRange = { 
@@ -1183,15 +1181,12 @@ private:
                 .layerCount = 1 } 
         };
 
-        vk::ImageView imageView;
-        if (m_vkContext.m_device.createImageView(&viewInfo, nullptr, &imageView) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createImageView(&viewInfo, nullptr, &texture.descriptorInfo.imageView) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create image view!");
         }
-
-        return imageView;
     }
 
-    void createTextureSampler() {
+    void createModelTextureSampler() {
         vk::PhysicalDeviceProperties properties{};
         m_vkContext.m_physicalDevice.getProperties(&properties);
 
@@ -1213,12 +1208,12 @@ private:
             .unnormalizedCoordinates = VK_FALSE
         };
 
-        if (m_vkContext.m_device.createSampler(&samplerInfo, nullptr, &m_textureSampler) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.createSampler(&samplerInfo, nullptr, &m_modelTexture.descriptorInfo.sampler) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create texture sampler!");
         }
     }
 
-    void createSampler() {
+    void createSampler(Texture& texture) {
         vk::SamplerCreateInfo samplerInfo {
             // .magFilter = vk::Filter::eLinear,
             // .minFilter = vk::Filter::eLinear,
@@ -1236,12 +1231,12 @@ private:
             // .unnormalizedCoordinates = VK_FALSE
         };
 
-        if (m_vkContext.m_device.createSampler(&samplerInfo, nullptr, &m_colorImageSampler) != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to create color iamge sampler!");
+        if (m_vkContext.m_device.createSampler(&samplerInfo, nullptr, &texture.descriptorInfo.sampler) != vk::Result::eSuccess) {
+            throw std::runtime_error("failed to create sampler!");
         }
     }
 
-    void transitionImageLayout(vk::Image image, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
+    void transitionImageLayout(Texture& texture, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
         
         vk::CommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -1250,7 +1245,7 @@ private:
             .newLayout = newLayout,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = image,
+            .image = texture.image,
             .subresourceRange = { 
                 .baseMipLevel = 0,
                 .levelCount = 1,
@@ -1319,10 +1314,22 @@ private:
             // and the writing in the eLateFragmentTests stage
             destinationStage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
         }
+
+        else if (oldLayout == vk::ImageLayout::eColorAttachmentOptimal && 
+                 newLayout == vk::ImageLayout::eShaderReadOnlyOptimal) {
+
+            barrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
+            barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+            sourceStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+            destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
+        }
         
         else {
             throw std::invalid_argument("unsupported layout transition!");
         }
+
+        texture.descriptorInfo.imageLayout = newLayout;
         
         commandBuffer.pipelineBarrier(sourceStage, destinationStage, 
                                       {},
@@ -1333,12 +1340,12 @@ private:
         endSingleTimeCommands(commandBuffer);
     }
     
-    void createDepthResources() {
+    void createDepthResources(Texture& texture) {
         vk::Format depthFormat = findDepthFormat();
-        createImage(m_swapChainExtent.width, m_swapChainExtent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, m_depthImage, m_depthImageMemory);
-        m_depthImageView = createImageView(m_depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+        createImage(texture, m_swapChainExtent.width, m_swapChainExtent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        createImageView(texture, depthFormat, vk::ImageAspectFlagBits::eDepth);
 
-        transitionImageLayout(m_depthImage, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        transitionImageLayout(texture, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
     }
 
     vk::Format findDepthFormat() {
@@ -1555,12 +1562,6 @@ private:
             .offset = 0,
             .range = sizeof(UniformBufferObject)
         };
-
-        vk::DescriptorImageInfo imageInfo {
-            .sampler = m_textureSampler,
-            .imageView = m_textureImageView,
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
-        };
         
         vk::WriteDescriptorSet uniformBufferWrite = { 
             .dstSet = m_offscreenDescriptorSets,
@@ -1572,13 +1573,14 @@ private:
             .pBufferInfo = &bufferInfo,
             .pTexelBufferView = nullptr
         };
+
         vk::WriteDescriptorSet combinedSamplerWrite = { 
             .dstSet = m_offscreenDescriptorSets,
             .dstBinding = 1,
             .dstArrayElement = 0,
             .descriptorCount = 1,
             .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-            .pImageInfo = &imageInfo
+            .pImageInfo = &m_modelTexture.descriptorInfo
         };
 
         vk::WriteDescriptorSet descriptorWrites[] = {
@@ -1642,10 +1644,15 @@ private:
             }
         }
 
-        for (size_t i = 0; i < kMaxFramesInFlight; ++i) {        
-            m_colorImageDescriptor.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-            m_colorImageDescriptor.imageView = m_colorImageView;
-            m_colorImageDescriptor.sampler = m_colorImageSampler;
+        for (size_t i = 0; i < kMaxFramesInFlight; ++i) {            
+            // transitionImageLayout(m_offscreenColorImage, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+            // m_offscreenColorImage.descriptorInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+            vk::DescriptorImageInfo imageInfo {
+                .sampler = m_offscreenColorImage.descriptorInfo.sampler,
+                .imageView = m_offscreenColorImage.descriptorInfo.imageView,
+                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            };
 
             vk::WriteDescriptorSet descriptorWrite { 
                 .dstSet = m_finalDescriptorSets[i],
@@ -1653,7 +1660,7 @@ private:
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
                 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                .pImageInfo = &m_colorImageDescriptor
+                .pImageInfo = &imageInfo
             };
             
             m_vkContext.m_device.updateDescriptorSets(1, &descriptorWrite, 0, nullptr);
@@ -1692,7 +1699,7 @@ private:
             .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = m_colorImage,
+            .image = m_offscreenColorImage.image,
             .subresourceRange = { 
                 .baseMipLevel = 0,
                 .levelCount = 1,
@@ -1710,7 +1717,7 @@ private:
                                       0, nullptr,
                                       1, &barrier);
 
-        recordGuiRenderPass(commandBuffer, imageIndex);
+        recordFinalRenderPass(commandBuffer, imageIndex);
 
         try { 
             commandBuffer.end();
@@ -1764,7 +1771,7 @@ private:
         commandBuffer.endRenderPass();
     }
 
-    void recordGuiRenderPass(vk::CommandBuffer commandBuffer, uint32_t imageIndex) {
+    void recordFinalRenderPass(vk::CommandBuffer commandBuffer, uint32_t imageIndex) {
         std::array<vk::ClearValue, 2> clearValues {};
         clearValues[0].color = vk::ClearColorValue {std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[1].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
@@ -1918,22 +1925,20 @@ private:
             m_vkContext.m_device.destroyFramebuffer(m_swapChainFramebuffers[i], nullptr);
         }
 
-        for (size_t i = 0; i < m_swapChainImageViews.size(); ++i) {
-            m_vkContext.m_device.destroyImageView(m_swapChainImageViews[i], nullptr);
+        for (size_t i = 0; i < m_swapChainColorImageViews.size(); ++i) {
+            m_vkContext.m_device.destroyImageView(m_swapChainColorImageViews[i], nullptr);
         }
+
+        destroyTexture(m_vkContext.m_device, m_swapChainDepthImage);
 
         m_vkContext.m_device.destroySwapchainKHR(m_swapChain, nullptr);
     }
 
-    void cleanupOffscreenBuffer() {
+    void cleanupOffscreenResources() {
         m_vkContext.m_device.destroyFramebuffer(m_offscreenFramebuffer, nullptr);
 
-        m_vkContext.m_device.destroyImage(m_colorImage, nullptr);
-        m_vkContext.m_device.destroyImageView(m_colorImageView, nullptr);
-        m_vkContext.m_device.freeMemory(m_colorImageMemory, nullptr);
-        m_vkContext.m_device.destroyImage(m_depthImage, nullptr);
-        m_vkContext.m_device.destroyImageView(m_depthImageView, nullptr);
-        m_vkContext.m_device.freeMemory(m_depthImageMemory, nullptr);
+        destroyTexture(m_vkContext.m_device, m_offscreenColorImage);
+        destroyTexture(m_vkContext.m_device, m_offscreenDepthImage);
     }
 
     void recreateSwapChain() {
@@ -1947,10 +1952,10 @@ private:
         m_vkContext.m_device.waitIdle();
 
         cleanupSwapChain();
-        cleanupOffscreenBuffer();
+        cleanupOffscreenResources();
 
         createSwapChain();
-        createImageViews();
+        createSwapChainImageViews();
         createSwapChainFrameBuffers();
 
         createOffscreenRender();
