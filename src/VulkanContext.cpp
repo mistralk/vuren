@@ -5,7 +5,6 @@
 namespace vrb {
 
 VulkanContext::VulkanContext() {
-
 }
 
 VulkanContext::~VulkanContext() {

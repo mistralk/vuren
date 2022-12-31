@@ -1,6 +1,6 @@
 # vulkan_render_base
 
-A prototype-oriented Vulkan rendering project template. Its underlying code structure is based on [Vulkan Tutorial](https://vulkan-tutorial.com/). Also a lot of parts has inspired by several other great tutorials and examples.
+A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by several tutorials and examples. I started this project with following the great [Vulkan Tutorial](https://vulkan-tutorial.com/), but now it has a slightly different code structure.
 
 Currently it has only been tested on Ubuntu 22.04.
 
@@ -14,8 +14,7 @@ Currently it has only been tested on Ubuntu 22.04.
 ## Features
 
 - [x] Vulkan context initialization
-- [x] Multiple render passes
-- [x] Loading OBJ data
+- [x] Render pass abstraction
 - [x] GUI and basic statistics
 - [ ] Render skeleton for both rasterization and ray tracing
 - [ ] Reference unbiased path tracer
@@ -25,7 +24,8 @@ Currently it has only been tested on Ubuntu 22.04.
 Vulkan tutorials and samples
 
 - [Vulkan Tutorial](https://vulkan-tutorial.com/)
-- [NVIDIA Vulkan Ray Tracing Tutorials](https://github.com/nvpro-samples/vk_raytracing_tutorial_KHR)
+- [Vulkan Ray Tracing Tutorials by NVIDIA](https://github.com/nvpro-samples/vk_raytracing_tutorial_KHR)
+- [Vulkan Samples by Khronos Group](https://github.com/KhronosGroup/Vulkan-Samples)
 
 CMake structure and shader compilation
 
