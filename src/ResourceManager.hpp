@@ -3,6 +3,7 @@
 
 #include "VulkanContext.hpp"
 #include "Common.hpp"
+#include "Scene.hpp"
 
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan.hpp>
@@ -56,13 +57,15 @@ public:
     ResourceManager(VulkanContext* pContext);
     ~ResourceManager();
 
-    void createTexture_RGB32Sfloat(std::string name);
-    void createDepthTexture(std::string name);
+    void createTexture_RGB32Sfloat(const std::string& name);
+    void createDepthTexture(const std::string& name);
     void createModelTexture(const std::string& name, const std::string& filename);
     void createModelTextureSampler(Texture& texture);
-    void createVertexBuffer(std::string name, const std::vector<Vertex>& vertices);
-    void createIndexBuffer(std::string name, const std::vector<uint32_t>& indices);
-    void createUniformBuffer(std::string name);
+    void createVertexBuffer(const std::string& name, const std::vector<Vertex>& vertices);
+    void createIndexBuffer(const std::string& name, const std::vector<uint32_t>& indices);
+    void createUniformBuffer(const std::string& name);
+
+    SceneObject loadObjModel(const std::string& name, const std::string& filename);
 
     void destroyTextures();
     void destroyBuffers();
@@ -70,9 +73,9 @@ public:
     void setExtent(vk::Extent2D extent);
     void setCommandPool(vk::CommandPool* commandPool);
 
-    Texture getTexture(std::string name);
-    Buffer getBuffer(std::string name);
-    void* getMappedBuffer(std::string name);
+    Texture getTexture(const std::string& name);
+    Buffer getBuffer(const std::string& name);
+    void* getMappedBuffer(const std::string& name);
 
 private:
     std::unordered_map<std::string, Texture> m_globalTextureDict;

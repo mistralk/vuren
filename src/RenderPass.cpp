@@ -3,10 +3,11 @@
 
 namespace vrb {
 
-RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager)
+RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene)
     : m_pContext(pContext),
       m_pCommandPool(pCommandPool),
       m_pResourceManager(pResourceManager), 
+      m_pScene(pScene),
       m_rasterPipeline(pContext, &m_renderPass, &m_descriptorSetLayout, &m_pipelineLayout, false) {
 }
 

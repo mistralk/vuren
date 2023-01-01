@@ -17,6 +17,8 @@ const uint32_t kHeight = 600;
 static std::string kAppName = "vrb";
 // const int kMaxFramesInFlight = 1;
 
+struct Buffer;
+
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
@@ -62,6 +64,18 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+};
+
+struct SceneObject {
+    uint32_t vertexBufferSize {0};
+    uint32_t indexBufferSize {0};
+    Buffer* vertexBuffer;
+    Buffer* indexBuffer;
+};
+
+struct ObjectInstance {
+    UniformBufferObject transform;
+    uint32_t objectId;
 };
 
 } // namespace vrb

@@ -33,13 +33,14 @@
 #include "ResourceManager.hpp"
 #include "Utils.hpp"
 #include "Timer.hpp"
+#include "Scene.hpp"
 
 namespace vrb {
 
 class OffscreenRenderPass : public RenderPass {
 public:
-    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager) 
-        : RenderPass(pContext, pCommandPool, pResourceManager) {
+    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
+        : RenderPass(pContext, pCommandPool, pResourceManager, pScene) {
     }
 
     ~OffscreenRenderPass() {
@@ -126,31 +127,32 @@ public:
         };
         commandBuffer.setScissor(0, 1, &scissor);
 
-        vk::Buffer vertexBuffers[] = {m_pResourceManager->getBuffer("VertexBuffer").descriptorInfo.buffer};
+        uint32_t objSize = m_pScene->getObjects().size();
+        std::vector<vk::Buffer> vertexBuffers(objSize);
         vk::DeviceSize offsets[] = {0};
-        commandBuffer.bindVertexBuffers(0, 1, vertexBuffers, offsets);
-        commandBuffer.bindIndexBuffer(m_pResourceManager->getBuffer("IndexBuffer").descriptorInfo.buffer, 0, vk::IndexType::eUint32);
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
-        commandBuffer.drawIndexed(static_cast<uint32_t>(m_pIndices->size()), 1, 0, 0, 0);
+
+        for (uint32_t i = 0; i < objSize; ++i) {
+            auto object = m_pScene->getObject(i);
+            vertexBuffers[i] = object.vertexBuffer->descriptorInfo.buffer;
+
+            commandBuffer.bindVertexBuffers(0, 1, vertexBuffers.data(), offsets);
+            commandBuffer.bindIndexBuffer(object.indexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
+            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
+            commandBuffer.drawIndexed(object.indexBufferSize, 1, 0, 0, 0);
+        }
 
         commandBuffer.endRenderPass();
-    }
-
-    void setIndexList(std::vector<uint32_t>* pIndices) {
-        m_pIndices = pIndices;
     }
 
 private:
     vk::Format m_colorAttachmentFormat {vk::Format::eR32G32B32A32Sfloat};
 
-    std::vector<uint32_t>* m_pIndices;
-
 }; // class OffscreenRenderPass
 
 class FinalRenderPass : public RenderPass {
 public:
-    FinalRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager) 
-        : RenderPass(pContext, pCommandPool, pResourceManager) {
+    FinalRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
+        : RenderPass(pContext, pCommandPool, pResourceManager, pScene) {
     }
 
     ~FinalRenderPass() {
@@ -320,8 +322,8 @@ private:
     std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
 
     // scene description
-    std::vector<Vertex> m_vertices;
-    std::vector<uint32_t> m_indices;
+    std::shared_ptr<Scene> m_pScene;
+    std::vector<ObjectInstance> m_instances;
 
     // for the offscreen pass
     OffscreenRenderPass offscreenRenderPass;
@@ -435,14 +437,15 @@ private:
         m_vkContext.init("test", m_pWindow);
 
         m_pResourceManager = std::make_shared<ResourceManager>(&m_vkContext);
+        m_pScene = std::make_shared<Scene>();
 
         m_swapChainFramebuffers = std::make_shared<std::vector<vk::Framebuffer>>();
         m_swapChainColorImages = std::make_shared<std::vector<vk::Image>>();
         m_swapChainColorImageViews = std::make_shared<std::vector<vk::ImageView>>();
 
         // to fix: strange copy construction
-        OffscreenRenderPass o(&m_vkContext, &m_commandPool, m_pResourceManager);
-        FinalRenderPass f(&m_vkContext, &m_commandPool, m_pResourceManager);
+        OffscreenRenderPass o(&m_vkContext, &m_commandPool, m_pResourceManager, m_pScene);
+        FinalRenderPass f(&m_vkContext, &m_commandPool, m_pResourceManager, m_pScene);
         offscreenRenderPass = o;
         finalRenderPass = f;
 
@@ -454,13 +457,15 @@ private:
         createCommandPool();
         m_pResourceManager->setCommandPool(&m_commandPool);
 
-        m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
-        loadObjModel(m_vertices, m_indices);
-        offscreenRenderPass.setIndexList(&m_indices);
-
-        m_pResourceManager->createVertexBuffer("VertexBuffer", m_vertices);
-        m_pResourceManager->createIndexBuffer("IndexBuffer", m_indices);
         m_pResourceManager->createUniformBuffer("CameraBuffer");
+        m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
+        auto object = m_pResourceManager->loadObjModel("Room", "models/viking_room.obj");
+        m_pScene->addObject(object);
+        // ObjectInstance instance = {
+        //     .transform = transform,
+        //     .objectId = static_cast<uint32_t>(m_pScene->getObjects().size())
+        // };
+        // m_instances.push_back(instance);
 
         offscreenRenderPass.setup();
 

@@ -1,5 +1,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tinyobjloader/tiny_obj_loader.h>
 
 #include "ResourceManager.hpp"
 
@@ -14,25 +16,25 @@ ResourceManager::~ResourceManager() {
 
 }
 
-Texture ResourceManager::getTexture(std::string name) {
+Texture ResourceManager::getTexture(const std::string& name) {
     if (m_globalTextureDict.find(name) == m_globalTextureDict.end())
         throw std::runtime_error("failed to find the texture!");
     return m_globalTextureDict[name];
 }
 
-Buffer ResourceManager::getBuffer(std::string name) {
+Buffer ResourceManager::getBuffer(const std::string& name) {
     if (m_globalBufferDict.find(name) == m_globalBufferDict.end())
         throw std::runtime_error("failed to find the buffer!");
     return m_globalBufferDict[name];
 }
 
-void* ResourceManager::getMappedBuffer(std::string name) {
+void* ResourceManager::getMappedBuffer(const std::string& name) {
     if (m_uniformBufferMappedDict.find(name) == m_uniformBufferMappedDict.end())
         throw std::runtime_error("failed to find the mapped buffer!");
     return m_uniformBufferMappedDict[name];
 }
 
-void ResourceManager::createTexture_RGB32Sfloat(std::string name) {
+void ResourceManager::createTexture_RGB32Sfloat(const std::string& name) {
     Texture texture;
     createImage(*m_pContext, texture,
         m_extent.width, m_extent.height, 
@@ -50,7 +52,7 @@ void ResourceManager::createTexture_RGB32Sfloat(std::string name) {
     m_globalTextureDict.insert({name, texture});
 }
 
-void ResourceManager::createDepthTexture(std::string name) {
+void ResourceManager::createDepthTexture(const std::string& name) {
     Texture depthTexture;
     vk::Format depthFormat = findDepthFormat(*m_pContext);
     createImage(*m_pContext, depthTexture, m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -135,7 +137,7 @@ void ResourceManager::createModelTextureSampler(Texture& texture) {
     }
 }
 
-void ResourceManager::createVertexBuffer(std::string name, const std::vector<Vertex>& vertices) {
+void ResourceManager::createVertexBuffer(const std::string& name, const std::vector<Vertex>& vertices) {
     Buffer buffer;
 
     vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -164,7 +166,7 @@ void ResourceManager::createVertexBuffer(std::string name, const std::vector<Ver
     m_globalBufferDict.insert({name, buffer});
 }
 
-void ResourceManager::createIndexBuffer(std::string name, const std::vector<uint32_t>& indices) {
+void ResourceManager::createIndexBuffer(const std::string& name, const std::vector<uint32_t>& indices) {
     Buffer buffer;
 
     vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
@@ -193,7 +195,7 @@ void ResourceManager::createIndexBuffer(std::string name, const std::vector<uint
     m_globalBufferDict.insert({name, buffer});
 }
 
-void ResourceManager::createUniformBuffer(std::string name) {
+void ResourceManager::createUniformBuffer(const std::string& name) {
     Buffer buffer;
     vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
@@ -232,6 +234,62 @@ void ResourceManager::setExtent(vk::Extent2D extent) {
 
 void ResourceManager::setCommandPool(vk::CommandPool* commandPool) {
     m_pCommandPool = commandPool;
+}
+
+SceneObject ResourceManager::loadObjModel(const std::string& name, const std::string& filename) {
+    std::string vertexBufferKey = std::string(name + "_vertexBuffer");
+    std::string indexBufferKey = std::string(name + "_indexBuffer");
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str())) {
+        throw std::runtime_error(warn + err);
+    }
+
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            Vertex vertex{};
+
+            vertex.pos = {
+                attrib.vertices[3 * index.vertex_index + 0],
+                attrib.vertices[3 * index.vertex_index + 1],
+                attrib.vertices[3 * index.vertex_index + 2]
+            };
+
+            vertex.texCoord = {
+                attrib.texcoords[2 * index.texcoord_index + 0],
+                1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+            };
+
+            vertex.color = {1.0f, 1.0f, 1.0f};
+
+            if (uniqueVertices.count(vertex) == 0) {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+
+            indices.push_back(uniqueVertices[vertex]);
+        }
+    }
+
+    createVertexBuffer(vertexBufferKey, vertices);
+    createIndexBuffer(indexBufferKey, indices);
+
+    SceneObject object = {
+        .vertexBufferSize = static_cast<uint32_t>(vertices.size()),
+        .indexBufferSize = static_cast<uint32_t>(indices.size()),
+        .vertexBuffer = &m_globalBufferDict[vertexBufferKey],
+        .indexBuffer = &m_globalBufferDict[indexBufferKey]
+    };
+
+    return object;
 }
 
 //// class ResourceManager member functions

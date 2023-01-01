@@ -6,6 +6,7 @@
 
 #include "Utils.hpp"
 #include "Common.hpp"
+#include "Scene.hpp"
 #include "ResourceManager.hpp"
 
 #include <memory>
@@ -251,7 +252,7 @@ public:
 
     RenderPass() {}
 
-    RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager);
+    RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene);
     virtual ~RenderPass();
     
     virtual void setup() = 0;
@@ -282,6 +283,7 @@ protected:
     vk::Extent2D m_extent;
 
     std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
+    std::shared_ptr<Scene> m_pScene {nullptr};
 
     void createDescriptorSet(const std::vector<ResourceBindingInfo>& bindingInfos);
     void createFramebuffer(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo);

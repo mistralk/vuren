@@ -20,8 +20,6 @@ void DestroyDebugUtilsMessengerEXT(vk::Instance instance,
     vk::DebugUtilsMessengerEXT debugMessenger, 
     const vk::AllocationCallbacks* pAllocator);
 
-void loadObjModel(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices);
-
 } // namespace vrb
 
 #endif // UTILS_HPP
