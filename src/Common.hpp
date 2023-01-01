@@ -15,7 +15,7 @@ namespace vrb {
 const uint32_t kWidth = 800;
 const uint32_t kHeight = 600;
 static std::string kAppName = "vrb";
-const int kMaxFramesInFlight = 1;
+// const int kMaxFramesInFlight = 1;
 
 struct Vertex {
     glm::vec3 pos;

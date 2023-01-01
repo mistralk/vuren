@@ -338,9 +338,9 @@ private:
     vk::CommandPool m_commandPool;
     std::vector<vk::CommandBuffer> m_commandBuffers;
 
-    std::vector<vk::Semaphore> m_imageAvailableSemaphores;
-    std::vector<vk::Semaphore> m_renderFinishedSemaphores;
-    std::vector<vk::Fence> m_inFlightFences;
+    vk::Semaphore m_imageAvailableSemaphore;
+    vk::Semaphore m_renderFinishedSemaphore;
+    vk::Fence m_inFlightFence;
 
 
     // scene description
@@ -352,9 +352,9 @@ private:
     vk::Buffer m_indexBuffer;
     vk::DeviceMemory m_indexBufferMemory;
 
-    std::vector<vk::Buffer> m_uniformBuffers;
-    std::vector<vk::DeviceMemory> m_uniformBuffersMemory;
-    std::vector<void*> m_uniformBuffersMapped;
+    vk::Buffer m_uniformBuffer;
+    vk::DeviceMemory m_uniformBufferMemory;
+    void* m_uniformBufferMapped;
 
     Texture m_modelTexture;
 
@@ -362,7 +362,6 @@ private:
     // for the offscreen pass
     OffscreenRenderPass offscreenRenderPass;
 
-    uint32_t m_currentFrame = 0;
     bool m_framebufferResized = false;
 
     // for the final pass and gui
@@ -505,8 +504,8 @@ private:
         m_pGlobalBufferDict->insert({"VertexBuffer", m_vertexBuffer});
         createIndexBuffer();
         m_pGlobalBufferDict->insert({"IndexBuffer", m_indexBuffer});
-        createUniformBuffers();
-        m_pGlobalBufferDict->insert({"UniformBuffer", m_uniformBuffers[0]});
+        createUniformBuffer();
+        m_pGlobalBufferDict->insert({"UniformBuffer", m_uniformBuffer});
 
         offscreenRenderPass.setExtent(m_swapChainExtent);
         offscreenRenderPass.setup();
@@ -543,10 +542,8 @@ private:
 
         // cleanup offscreen render pass data
 
-        // for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-        m_vkContext.m_device.destroyBuffer(m_uniformBuffers[0], nullptr);
-        m_vkContext.m_device.freeMemory(m_uniformBuffersMemory[0], nullptr);
-        // }
+        m_vkContext.m_device.destroyBuffer(m_uniformBuffer, nullptr);
+        m_vkContext.m_device.freeMemory(m_uniformBufferMemory, nullptr);
         m_vkContext.m_device.destroyBuffer(m_vertexBuffer, nullptr);
         m_vkContext.m_device.freeMemory(m_vertexBufferMemory, nullptr);
         m_vkContext.m_device.destroyBuffer(m_indexBuffer, nullptr);
@@ -565,11 +562,9 @@ private:
 
         cleanupSwapChain();
 
-        for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-            m_vkContext.m_device.destroySemaphore(m_imageAvailableSemaphores[i], nullptr);
-            m_vkContext.m_device.destroySemaphore(m_renderFinishedSemaphores[i], nullptr);
-            m_vkContext.m_device.destroyFence(m_inFlightFences[i], nullptr);
-        }
+        m_vkContext.m_device.destroySemaphore(m_imageAvailableSemaphore, nullptr);
+        m_vkContext.m_device.destroySemaphore(m_renderFinishedSemaphore, nullptr);
+        m_vkContext.m_device.destroyFence(m_inFlightFence, nullptr);
 
         m_vkContext.m_device.destroyCommandPool(m_commandPool, nullptr);
 
@@ -705,7 +700,7 @@ private:
     }
 
     void createCommandBuffers() {
-        m_commandBuffers.resize(kMaxFramesInFlight);
+        m_commandBuffers.resize(1);
 
         vk::CommandBufferAllocateInfo allocInfo { 
             .commandPool = m_commandPool,
@@ -728,7 +723,7 @@ private:
             throw std::runtime_error("failed to begin recording command buffer!");
         }
 
-        updateUniformBuffer(m_currentFrame);
+        updateUniformBuffer();
         offscreenRenderPass.record(commandBuffer);
 
         vk::ImageMemoryBarrier barrier { 
@@ -764,19 +759,15 @@ private:
     }
 
     void createSyncObjects() {
-        m_imageAvailableSemaphores.resize(kMaxFramesInFlight);
-        m_renderFinishedSemaphores.resize(kMaxFramesInFlight);
-        m_inFlightFences.resize(kMaxFramesInFlight);
-
         vk::SemaphoreCreateInfo semaphoreInfo{};
-        vk::FenceCreateInfo fenceInfo{ .flags = vk::FenceCreateFlagBits::eSignaled };
+        vk::FenceCreateInfo fenceInfo{ 
+            .flags = vk::FenceCreateFlagBits::eSignaled 
+        };
 
-        for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-            if (m_vkContext.m_device.createSemaphore(&semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != vk::Result::eSuccess ||
-                m_vkContext.m_device.createSemaphore(&semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]) != vk::Result::eSuccess ||
-                m_vkContext.m_device.createFence(&fenceInfo, nullptr, &m_inFlightFences[i]) != vk::Result::eSuccess) {
-                throw std::runtime_error("failed to create synchronization objects for a frame!");
-            }
+        if (m_vkContext.m_device.createSemaphore(&semaphoreInfo, nullptr, &m_imageAvailableSemaphore) != vk::Result::eSuccess ||
+            m_vkContext.m_device.createSemaphore(&semaphoreInfo, nullptr, &m_renderFinishedSemaphore) != vk::Result::eSuccess ||
+            m_vkContext.m_device.createFence(&fenceInfo, nullptr, &m_inFlightFence) != vk::Result::eSuccess) {
+            throw std::runtime_error("failed to create synchronization objects for a frame!");
         }
     }
 
@@ -785,13 +776,13 @@ private:
 
         // at the start of the frame, we want to wait until the previous frame has finished
         do {
-            result = m_vkContext.m_device.waitForFences(1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
+            result = m_vkContext.m_device.waitForFences(1, &m_inFlightFence, VK_TRUE, UINT64_MAX);
         } while(result == vk::Result::eTimeout);
 
         uint32_t imageIndex;
         // "...to be signaled when the presentation engine is finished using the image. 
         // That's the point in time where we can start drawing to it."
-        result = m_vkContext.m_device.acquireNextImageKHR(m_swapChain, UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
+        result = m_vkContext.m_device.acquireNextImageKHR(m_swapChain, UINT64_MAX, m_imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
         if (result == vk::Result::eErrorOutOfDateKHR) {
             recreateSwapChain();
             return;
@@ -802,29 +793,29 @@ private:
         finalRenderPass.updateSwapChainImageIndex(imageIndex);
 
         // only reset the fence if we are submitting work
-        if (m_vkContext.m_device.resetFences(1, &m_inFlightFences[m_currentFrame]) != vk::Result::eSuccess) {
+        if (m_vkContext.m_device.resetFences(1, &m_inFlightFence) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to reset fence!");
         }
 
-        m_commandBuffers[m_currentFrame].reset();
-        
-        recordCommandBuffer(m_commandBuffers[m_currentFrame], imageIndex);
+        // currently only one command buffer is used.
+        m_commandBuffers[0].reset();
+        recordCommandBuffer(m_commandBuffers[0], imageIndex);
 
-        vk::Semaphore waitSemaphores[] = {m_imageAvailableSemaphores[m_currentFrame]};
+        vk::Semaphore waitSemaphores[] = {m_imageAvailableSemaphore};
         vk::PipelineStageFlags waitStages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
-        vk::Semaphore signalSemaphores[] = {m_renderFinishedSemaphores[m_currentFrame]};
+        vk::Semaphore signalSemaphores[] = {m_renderFinishedSemaphore};
 
         vk::SubmitInfo submitInfo { 
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = waitSemaphores,
             .pWaitDstStageMask = waitStages,
             .commandBufferCount = 1,
-            .pCommandBuffers = &m_commandBuffers[m_currentFrame],
+            .pCommandBuffers = &m_commandBuffers[0],
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = signalSemaphores
         };
         
-        if (m_vkContext.m_graphicsQueue.submit(1, &submitInfo, m_inFlightFences[m_currentFrame]) != vk::Result::eSuccess) {
+        if (m_vkContext.m_graphicsQueue.submit(1, &submitInfo, m_inFlightFence) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to submit draw command buffer!");
         }
 
@@ -846,8 +837,6 @@ private:
         } else if (result != vk::Result::eSuccess) {
             throw std::runtime_error("failed to present swap chain image!");
         }
-
-        m_currentFrame = (m_currentFrame + 1) % kMaxFramesInFlight;
     }
 
     void cleanupSwapChain() {        
@@ -992,21 +981,15 @@ private:
         m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
     }
 
-    void createUniformBuffers() {
+    void createUniformBuffer() {
         vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
-        m_uniformBuffers.resize(kMaxFramesInFlight);
-        m_uniformBuffersMemory.resize(kMaxFramesInFlight);
-        m_uniformBuffersMapped.resize(kMaxFramesInFlight);
+        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, m_uniformBuffer, m_uniformBufferMemory);
 
-        for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-            createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, m_uniformBuffers[i], m_uniformBuffersMemory[i]);
-
-            m_uniformBuffersMapped[i] = m_vkContext.m_device.mapMemory(m_uniformBuffersMemory[i], 0, bufferSize);
-        }
+        m_uniformBufferMapped = m_vkContext.m_device.mapMemory(m_uniformBufferMemory, 0, bufferSize);
     }
 
-    void updateUniformBuffer(uint32_t currentImage) {
+    void updateUniformBuffer() {
         static auto startTime = std::chrono::high_resolution_clock::now();
 
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -1021,7 +1004,7 @@ private:
         // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.
         ubo.proj[1][1] *= -1;
 
-        memcpy(m_uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        memcpy(m_uniformBufferMapped, &ubo, sizeof(ubo));
     }
 };
 

@@ -103,21 +103,6 @@ void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAtta
     }
 }
 
-
-// void RenderPass::cleanupDescriptorSet() {
-    // destroyTexture(m_vkContext.m_device, m_modelTexture);
-    //     destroyTexture(offscreen color image, depth image)
-
-    //     for (size_t i = 0; i < kMaxFramesInFlight; ++i) {
-    //         m_vkContext.m_device.destroyBuffer(m_uniformBuffers[i], nullptr);
-    //         m_vkContext.m_device.freeMemory(m_uniformBuffersMemory[i], nullptr);
-    //     }
-
-    //     m_vkContext.m_device.destroyDescriptorPool(m_offscreenDescriptorPool, nullptr);
-    //     m_vkContext.m_device.destroyDescriptorSetLayout(m_offscreenDescriptorSetLayout, nullptr);
-    
-// }
-
 void RenderPass::cleanup() {
     if (m_framebuffer) m_pContext->m_device.destroyFramebuffer(m_framebuffer, nullptr);
     m_pContext->m_device.destroyRenderPass(m_renderPass, nullptr);
@@ -189,11 +174,11 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
     std::vector<vk::DescriptorPoolSize> poolSizes(bindings.size());
     for (size_t i = 0; i < poolSizes.size(); ++i) {
         poolSizes[i].type = bindings[i].descriptorType;
-        poolSizes[i].descriptorCount = static_cast<uint32_t>(kMaxFramesInFlight);
+        poolSizes[i].descriptorCount = 1;
     }        
     
     vk::DescriptorPoolCreateInfo poolInfo { 
-        .maxSets = static_cast<uint32_t>(kMaxFramesInFlight),
+        .maxSets = 1,
         .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
         .pPoolSizes = poolSizes.data()
     };
