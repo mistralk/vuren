@@ -10,8 +10,6 @@
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/backends/imgui_impl_vulkan.h>
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
 
 #include <iostream>
 #include <stdexcept>
@@ -319,23 +317,17 @@ private:
 
     bool m_framebufferResized = false;
 
+    std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
+
     // scene description
     std::vector<Vertex> m_vertices;
     std::vector<uint32_t> m_indices;
-
-    Texture m_modelTexture;
-
-    // std::shared_ptr<std::unordered_map<std::string, Texture>> m_pGlobalTextureDict {nullptr};
-    // std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> m_pGlobalBufferDict {nullptr};
-
-    std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
 
     // for the offscreen pass
     OffscreenRenderPass offscreenRenderPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
-
     FinalRenderPass finalRenderPass;
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
 
@@ -448,6 +440,7 @@ private:
         m_swapChainColorImages = std::make_shared<std::vector<vk::Image>>();
         m_swapChainColorImageViews = std::make_shared<std::vector<vk::ImageView>>();
 
+        // to fix: strange copy construction
         OffscreenRenderPass o(&m_vkContext, &m_commandPool, m_pResourceManager);
         FinalRenderPass f(&m_vkContext, &m_commandPool, m_pResourceManager);
         offscreenRenderPass = o;
@@ -461,10 +454,7 @@ private:
         createCommandPool();
         m_pResourceManager->setCommandPool(&m_commandPool);
 
-        createModelTextureImage("textures/viking_room.png");
-        createModelTextureImageView();
-        createModelTextureSampler();
-        m_pResourceManager->insertTexture("ModelTexture", m_modelTexture);
+        m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
         loadObjModel(m_vertices, m_indices);
         offscreenRenderPass.setIndexList(&m_indices);
 
@@ -817,75 +807,6 @@ private:
 
         // createOffscreenRender();
         // updateFinalDescriptorSets();
-    }
-
-    void createModelTextureImage(const std::string& filename) {
-        int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        vk::DeviceSize imageSize = texWidth * texHeight * 4;
-
-        if (!pixels) {
-            throw std::runtime_error("failed to load texture image!");
-        }
-
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        createBuffer(m_vkContext, imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
-
-        void* data;
-        data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, imageSize);
-            memcpy(data, pixels, static_cast<size_t>(imageSize));
-        m_vkContext.m_device.unmapMemory(stagingBufferMemory);
-
-        stbi_image_free(pixels);
-
-        createImage(m_vkContext, m_modelTexture, texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
-    
-        // Transition the texture image to ImageLayout::eTransferDstOptimal
-        // The image was create with the ImageLayout::eUndefined layout
-        // Because we don't care about its contents before performing the copy operation
-        transitionImageLayout(m_vkContext, m_commandPool, m_modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-
-        // Execute the staging buffer to image copy operation
-        copyBufferToImage(m_vkContext, m_commandPool, stagingBuffer, m_modelTexture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-        
-        // To be able to start sampling from the texture image in the shader,
-        // need one last transition to prepare it for shader access
-        transitionImageLayout(m_vkContext, m_commandPool, m_modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
-    
-        m_vkContext.m_device.destroyBuffer(stagingBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
-    }
-
-    void createModelTextureImageView() {
-        createImageView(m_vkContext, m_modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
-    }
-
-    void createModelTextureSampler() {
-        vk::PhysicalDeviceProperties properties{};
-        m_vkContext.m_physicalDevice.getProperties(&properties);
-
-        vk::SamplerCreateInfo samplerInfo {
-            .magFilter = vk::Filter::eLinear,
-            .minFilter = vk::Filter::eLinear,
-            .mipmapMode = vk::SamplerMipmapMode::eLinear,
-            .addressModeU = vk::SamplerAddressMode::eRepeat,
-            .addressModeV = vk::SamplerAddressMode::eRepeat,
-            .addressModeW = vk::SamplerAddressMode::eRepeat,
-            .mipLodBias = 0.0f,
-            .anisotropyEnable = VK_TRUE,
-            .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
-            .compareEnable = VK_FALSE,
-            .compareOp = vk::CompareOp::eAlways,
-            .minLod = 0.0f,
-            .maxLod = 0.0f,
-            .borderColor = vk::BorderColor::eIntOpaqueBlack,
-            .unnormalizedCoordinates = VK_FALSE
-        };
-
-        if (m_vkContext.m_device.createSampler(&samplerInfo, nullptr, &m_modelTexture.descriptorInfo.sampler) != vk::Result::eSuccess) {
-            throw std::runtime_error("failed to create texture sampler!");
-        }
     }
 
     void updateUniformBuffer(std::string name) {

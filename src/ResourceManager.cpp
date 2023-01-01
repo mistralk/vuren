@@ -1,3 +1,6 @@
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
 #include "ResourceManager.hpp"
 
 namespace vrb {
@@ -58,6 +61,78 @@ void ResourceManager::createDepthTexture(std::string name) {
         throw std::runtime_error("same depth key already exists in texture dictionary!");
 
     m_globalTextureDict.insert({name, depthTexture});
+}
+
+void ResourceManager::createModelTexture(const std::string& name, const std::string& filename) {
+    Texture modelTexture;
+
+    int texWidth, texHeight, texChannels;
+    stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    vk::DeviceSize imageSize = texWidth * texHeight * 4;
+
+    if (!pixels) {
+        throw std::runtime_error("failed to load texture image!");
+    }
+
+    vk::Buffer stagingBuffer;
+    vk::DeviceMemory stagingBufferMemory;
+    createBuffer(*m_pContext, imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    data = m_pContext->m_device.mapMemory(stagingBufferMemory, 0, imageSize);
+        memcpy(data, pixels, static_cast<size_t>(imageSize));
+    m_pContext->m_device.unmapMemory(stagingBufferMemory);
+
+    stbi_image_free(pixels);
+
+    createImage(*m_pContext, modelTexture, texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    // Transition the texture image to ImageLayout::eTransferDstOptimal
+    // The image was create with the ImageLayout::eUndefined layout
+    // Because we don't care about its contents before performing the copy operation
+    transitionImageLayout(*m_pContext, *m_pCommandPool, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+    // Execute the staging buffer to image copy operation
+    copyBufferToImage(*m_pContext, *m_pCommandPool, stagingBuffer, modelTexture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    
+    // To be able to start sampling from the texture image in the shader,
+    // need one last transition to prepare it for shader access
+    transitionImageLayout(*m_pContext, *m_pCommandPool, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
+    m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
+
+    createImageView(*m_pContext, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+    createModelTextureSampler(modelTexture);
+
+    m_globalTextureDict.insert({name, modelTexture});
+}
+
+void ResourceManager::createModelTextureSampler(Texture& texture) {
+    vk::PhysicalDeviceProperties properties{};
+    m_pContext->m_physicalDevice.getProperties(&properties);
+
+    vk::SamplerCreateInfo samplerInfo {
+        .magFilter = vk::Filter::eLinear,
+        .minFilter = vk::Filter::eLinear,
+        .mipmapMode = vk::SamplerMipmapMode::eLinear,
+        .addressModeU = vk::SamplerAddressMode::eRepeat,
+        .addressModeV = vk::SamplerAddressMode::eRepeat,
+        .addressModeW = vk::SamplerAddressMode::eRepeat,
+        .mipLodBias = 0.0f,
+        .anisotropyEnable = VK_TRUE,
+        .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
+        .compareEnable = VK_FALSE,
+        .compareOp = vk::CompareOp::eAlways,
+        .minLod = 0.0f,
+        .maxLod = 0.0f,
+        .borderColor = vk::BorderColor::eIntOpaqueBlack,
+        .unnormalizedCoordinates = VK_FALSE
+    };
+
+    if (m_pContext->m_device.createSampler(&samplerInfo, nullptr, &texture.descriptorInfo.sampler) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
 }
 
 void ResourceManager::createVertexBuffer(std::string name, const std::vector<Vertex>& vertices) {
@@ -149,14 +224,6 @@ void ResourceManager::destroyBuffers() {
         }
         destroyBuffer(*m_pContext, buffer.second);
     }
-}
-
-void ResourceManager::insertTexture(std::string name, Texture texture) {
-    m_globalTextureDict.insert({name, texture});
-}
-
-void ResourceManager::insertBuffer(std::string name, Buffer buffer) {
-    m_globalBufferDict.insert({name, buffer});
 }
 
 void ResourceManager::setExtent(vk::Extent2D extent) {

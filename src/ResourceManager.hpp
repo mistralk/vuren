@@ -58,15 +58,14 @@ public:
 
     void createTexture_RGB32Sfloat(std::string name);
     void createDepthTexture(std::string name);
+    void createModelTexture(const std::string& name, const std::string& filename);
+    void createModelTextureSampler(Texture& texture);
     void createVertexBuffer(std::string name, const std::vector<Vertex>& vertices);
     void createIndexBuffer(std::string name, const std::vector<uint32_t>& indices);
-
     void createUniformBuffer(std::string name);
+
     void destroyTextures();
     void destroyBuffers();
-
-    void insertTexture(std::string name, Texture texture);
-    void insertBuffer(std::string name, Buffer buffer);
 
     void setExtent(vk::Extent2D extent);
     void setCommandPool(vk::CommandPool* commandPool);
