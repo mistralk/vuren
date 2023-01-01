@@ -3,8 +3,8 @@ target_sources(vulkan_render_base PRIVATE
     VulkanContext.cpp
     Utils.hpp
     Utils.cpp
-    Texture.hpp
-    Texture.cpp
+    ResourceManager.hpp
+    ResourceManager.cpp
     RenderPass.hpp
     RenderPass.cpp
     Common.hpp

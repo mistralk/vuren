@@ -1,12 +1,184 @@
-#include "Texture.hpp"
+#include "ResourceManager.hpp"
 
 namespace vrb {
+
+ResourceManager::ResourceManager(VulkanContext* pContext) 
+    : m_pContext(pContext) {
+
+}
+
+ResourceManager::~ResourceManager() {
+
+}
+
+Texture ResourceManager::getTexture(std::string name) {
+    if (m_globalTextureDict.find(name) == m_globalTextureDict.end())
+        throw std::runtime_error("failed to find the texture!");
+    return m_globalTextureDict[name];
+}
+
+Buffer ResourceManager::getBuffer(std::string name) {
+    if (m_globalBufferDict.find(name) == m_globalBufferDict.end())
+        throw std::runtime_error("failed to find the buffer!");
+    return m_globalBufferDict[name];
+}
+
+void* ResourceManager::getMappedBuffer(std::string name) {
+    if (m_uniformBufferMappedDict.find(name) == m_uniformBufferMappedDict.end())
+        throw std::runtime_error("failed to find the mapped buffer!");
+    return m_uniformBufferMappedDict[name];
+}
+
+void ResourceManager::createTexture_RGB32Sfloat(std::string name) {
+    Texture texture;
+    createImage(*m_pContext, texture,
+        m_extent.width, m_extent.height, 
+        vk::Format::eR32G32B32A32Sfloat, 
+        vk::ImageTiling::eOptimal, 
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
+        vk::MemoryPropertyFlagBits::eDeviceLocal);
+    createImageView(*m_pContext, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
+    createSampler(*m_pContext, texture);
+    // transitionImageLayout(*m_pContext, *m_pCommandPool, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
+
+    if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
+        throw std::runtime_error("same key already exists in texture dictionary!");
+    
+    m_globalTextureDict.insert({name, texture});
+}
+
+void ResourceManager::createDepthTexture(std::string name) {
+    Texture depthTexture;
+    vk::Format depthFormat = findDepthFormat(*m_pContext);
+    createImage(*m_pContext, depthTexture, m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    createImageView(*m_pContext, depthTexture, depthFormat, vk::ImageAspectFlagBits::eDepth);
+    // transitionImageLayout(*m_pContext, *m_pCommandPool, texture, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+
+    if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
+        throw std::runtime_error("same depth key already exists in texture dictionary!");
+
+    m_globalTextureDict.insert({name, depthTexture});
+}
+
+void ResourceManager::createVertexBuffer(std::string name, const std::vector<Vertex>& vertices) {
+    Buffer buffer;
+
+    vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    
+    vk::Buffer stagingBuffer;
+    vk::DeviceMemory stagingBufferMemory;
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    data = m_pContext->m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
+        memcpy(data, vertices.data(), (size_t)bufferSize);
+    m_pContext->m_device.unmapMemory(stagingBufferMemory);
+
+    vk::Buffer vertexBuffer;
+    vk::DeviceMemory vertexBufferMemory;
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
+
+    copyBuffer(*m_pContext, *m_pCommandPool, stagingBuffer, vertexBuffer, bufferSize);
+
+    m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
+    m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
+
+    buffer.descriptorInfo.buffer = vertexBuffer;
+    buffer.memory = vertexBufferMemory;
+
+    m_globalBufferDict.insert({name, buffer});
+}
+
+void ResourceManager::createIndexBuffer(std::string name, const std::vector<uint32_t>& indices) {
+    Buffer buffer;
+
+    vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+    
+    vk::Buffer stagingBuffer;
+    vk::DeviceMemory stagingBufferMemory;
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    data = m_pContext->m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
+        memcpy(data, indices.data(), (size_t)bufferSize);
+    m_pContext->m_device.unmapMemory(stagingBufferMemory);
+
+    vk::Buffer indexBuffer;
+    vk::DeviceMemory indexBufferMemory;
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
+
+    copyBuffer(*m_pContext, *m_pCommandPool, stagingBuffer, indexBuffer, bufferSize);
+
+    m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
+    m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
+
+    buffer.descriptorInfo.buffer = indexBuffer;
+    buffer.memory = indexBufferMemory;
+
+    m_globalBufferDict.insert({name, buffer});
+}
+
+void ResourceManager::createUniformBuffer(std::string name) {
+    Buffer buffer;
+    vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    vk::Buffer uniformBuffer;
+    vk::DeviceMemory uniformBufferMemory;
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, uniformBuffer, uniformBufferMemory);
+
+    void* mapped;
+    mapped = m_pContext->m_device.mapMemory(uniformBufferMemory, 0, bufferSize);
+    
+    buffer.descriptorInfo.buffer = uniformBuffer;
+    buffer.memory = uniformBufferMemory;
+
+    m_uniformBufferMappedDict.insert({name, mapped});
+    m_globalBufferDict.insert({name, buffer});
+}
+
+void ResourceManager::destroyTextures() {
+    for (auto texture : m_globalTextureDict) {
+        destroyTexture(*m_pContext, texture.second);
+    }
+}
+
+void ResourceManager::destroyBuffers() {
+    for (auto buffer : m_globalBufferDict) {
+        if (m_uniformBufferMappedDict.find(buffer.first) != m_uniformBufferMappedDict.end()) {
+            m_uniformBufferMappedDict.erase(buffer.first);
+        }
+        destroyBuffer(*m_pContext, buffer.second);
+    }
+}
+
+void ResourceManager::insertTexture(std::string name, Texture texture) {
+    m_globalTextureDict.insert({name, texture});
+}
+
+void ResourceManager::insertBuffer(std::string name, Buffer buffer) {
+    m_globalBufferDict.insert({name, buffer});
+}
+
+void ResourceManager::setExtent(vk::Extent2D extent) {
+    m_extent = extent;
+}
+
+void ResourceManager::setCommandPool(vk::CommandPool* commandPool) {
+    m_pCommandPool = commandPool;
+}
+
+//// class ResourceManager member functions
 
 void destroyTexture(const VulkanContext& context, Texture& texture) {
     context.m_device.destroySampler(texture.descriptorInfo.sampler, nullptr);
     context.m_device.destroyImage(texture.image, nullptr);
     context.m_device.destroyImageView(texture.descriptorInfo.imageView, nullptr);
     context.m_device.freeMemory(texture.memory, nullptr);
+}
+
+void destroyBuffer(const VulkanContext& context, Buffer& buffer) {
+    context.m_device.destroyBuffer(buffer.descriptorInfo.buffer, nullptr);
+    context.m_device.freeMemory(buffer.memory, nullptr);
 }
 
 bool hasStencilComponent(vk::Format format) {
@@ -161,11 +333,13 @@ void createSampler(const VulkanContext& context, Texture& texture) {
     }
 }
 
-void createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& bufferMemory) {
-    vk::BufferCreateInfo bufferInfo { .size = size,
-                                        .usage = usage,
-                                        .sharingMode = vk::SharingMode::eExclusive };
-    
+void createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& memory) {
+    vk::BufferCreateInfo bufferInfo { 
+        .size = size,
+        .usage = usage,
+        .sharingMode = vk::SharingMode::eExclusive
+    };
+
     if (context.m_device.createBuffer(&bufferInfo, nullptr, &buffer) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create a buffer!");
     }
@@ -173,22 +347,26 @@ void createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferU
     vk::MemoryRequirements memRequirements;
     context.m_device.getBufferMemoryRequirements(buffer, &memRequirements);
 
-    vk::MemoryAllocateInfo allocInfo{ .allocationSize = memRequirements.size,
-                                        .memoryTypeIndex = findMemoryType(context, memRequirements.memoryTypeBits, properties) };
+    vk::MemoryAllocateInfo allocInfo{ 
+        .allocationSize = memRequirements.size,
+        .memoryTypeIndex = findMemoryType(context, memRequirements.memoryTypeBits, properties)
+    };
     
-    if (context.m_device.allocateMemory(&allocInfo, nullptr, &bufferMemory) != vk::Result::eSuccess) {
+    if (context.m_device.allocateMemory(&allocInfo, nullptr, &memory) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to allocate a buffer memory!");
     }
 
-    context.m_device.bindBufferMemory(buffer, bufferMemory, 0);
+    context.m_device.bindBufferMemory(buffer, memory, 0);
 }
 
 void copyBuffer(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
 
-    vk::BufferCopy copyRegion { .srcOffset = 0,
-                                .dstOffset = 0,
-                                .size = size };
+    vk::BufferCopy copyRegion { 
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = size
+    };
     commandBuffer.copyBuffer(srcBuffer, dstBuffer, 1, &copyRegion);
 
     endSingleTimeCommands(context, commandPool, commandBuffer);
@@ -197,16 +375,18 @@ void copyBuffer(const VulkanContext& context, vk::CommandPool& commandPool, vk::
 void copyBufferToImage(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
 
-    vk::BufferImageCopy region { .bufferOffset = 0,
-                                    .bufferRowLength = 0,
-                                    .bufferImageHeight = 0,
-                                    .imageSubresource = { .aspectMask = vk::ImageAspectFlagBits::eColor,
-                                                        .mipLevel = 0,
-                                                        .baseArrayLayer = 0,
-                                                        .layerCount = 1 },
-                                    .imageOffset = { 0, 0, 0 },
-                                    .imageExtent = { width, height, 1 } };
-    
+    vk::BufferImageCopy region { 
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = { .aspectMask = vk::ImageAspectFlagBits::eColor,
+                            .mipLevel = 0,
+                            .baseArrayLayer = 0,
+                            .layerCount = 1 },
+        .imageOffset = { 0, 0, 0 },
+        .imageExtent = { width, height, 1 }
+    };
+
     commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, 1, &region);
 
     endSingleTimeCommands(context, commandPool, commandBuffer);

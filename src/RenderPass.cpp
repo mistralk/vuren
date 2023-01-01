@@ -3,11 +3,10 @@
 
 namespace vrb {
 
-RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<std::unordered_map<std::string, Texture>> pGlobalTextureDict, std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> pGlobalBufferDict)
+RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager)
     : m_pContext(pContext),
       m_pCommandPool(pCommandPool),
-      m_pGlobalTextureDict(pGlobalTextureDict), 
-      m_pGlobalBufferDict(pGlobalBufferDict),
+      m_pResourceManager(pResourceManager), 
       m_rasterPipeline(pContext, &m_renderPass, &m_descriptorSetLayout, &m_pipelineLayout, false) {
 }
 
@@ -212,14 +211,14 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
 
         switch (bindings[i].descriptorType) {
             case vk::DescriptorType::eCombinedImageSampler:
-                tempImageInfos[i].sampler = (*m_pGlobalTextureDict)[bindingInfos[i].name].descriptorInfo.sampler;
-                tempImageInfos[i].imageView = (*m_pGlobalTextureDict)[bindingInfos[i].name].descriptorInfo.imageView;
+                tempImageInfos[i].sampler = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.sampler;
+                tempImageInfos[i].imageView = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.imageView;
                 tempImageInfos[i].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
                 pImageInfo = &tempImageInfos[i];
                 break;
-                
+            
             case vk::DescriptorType::eUniformBuffer:
-                tempBufferInfos[i].buffer = (*m_pGlobalBufferDict)[bindingInfos[i].name];
+                tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
                 tempBufferInfos[i].offset = 0;
                 tempBufferInfos[i].range = sizeof(UniformBufferObject);
                 pBufferInfo = &tempBufferInfos[i];

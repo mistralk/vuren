@@ -6,7 +6,8 @@
 
 #include "Utils.hpp"
 #include "Common.hpp"
-#include "Texture.hpp"
+#include "ResourceManager.hpp"
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -250,7 +251,7 @@ public:
 
     RenderPass() {}
 
-    RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<std::unordered_map<std::string, Texture>> pGlobalTextureDict, std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> pGlobalBufferDict);
+    RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager);
     virtual ~RenderPass();
     
     virtual void setup() = 0;
@@ -280,8 +281,7 @@ protected:
 
     vk::Extent2D m_extent;
 
-    std::shared_ptr<std::unordered_map<std::string, Texture>> m_pGlobalTextureDict {nullptr};
-    std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> m_pGlobalBufferDict {nullptr};
+    std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
 
     void createDescriptorSet(const std::vector<ResourceBindingInfo>& bindingInfos);
     void createFramebuffer(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo);

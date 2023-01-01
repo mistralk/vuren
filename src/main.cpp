@@ -32,7 +32,7 @@
 #include "VulkanContext.hpp"
 #include "Common.hpp"
 #include "RenderPass.hpp"
-#include "Texture.hpp"
+#include "ResourceManager.hpp"
 #include "Utils.hpp"
 #include "Timer.hpp"
 
@@ -40,8 +40,8 @@ namespace vrb {
 
 class OffscreenRenderPass : public RenderPass {
 public:
-    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<std::unordered_map<std::string, Texture>> pGlobalTextureDict, std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> pGlobalBufferDict) 
-        : RenderPass(pContext, pCommandPool, pGlobalTextureDict, pGlobalBufferDict) {
+    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager) 
+        : RenderPass(pContext, pCommandPool, pResourceManager) {
     }
 
     ~OffscreenRenderPass() {
@@ -51,39 +51,20 @@ public:
     OffscreenRenderPass() {}
 
     void setup() {
-        // create the color image
-        Texture texture;
-        createImage(*m_pContext, texture,
-            m_extent.width, m_extent.height, 
-            vk::Format::eR32G32B32A32Sfloat, 
-            vk::ImageTiling::eOptimal, 
-            vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
-            vk::MemoryPropertyFlagBits::eDeviceLocal);
-        createImageView(*m_pContext, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
-        createSampler(*m_pContext, texture);
-        // transitionImageLayout(*m_pContext, *m_pCommandPool, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
-
-        // create the depth image
-        Texture depthTexture;
-        vk::Format depthFormat = findDepthFormat(*m_pContext);
-        createImage(*m_pContext, depthTexture, m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
-        createImageView(*m_pContext, depthTexture, depthFormat, vk::ImageAspectFlagBits::eDepth);
-        // transitionImageLayout(*m_pContext, *m_pCommandPool, texture, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
-        
-        // register the created images
-        m_pGlobalTextureDict->insert({"OffscreenColor", texture});
-        m_pGlobalTextureDict->insert({"OffscreenDepth", depthTexture});
+        // create textures for the attachments
+        m_pResourceManager->createTexture_RGB32Sfloat("OffscreenColor");
+        m_pResourceManager->createDepthTexture("OffscreenDepth");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
-            {"UniformBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex},
+            {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex},
             {"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
         };
         createDescriptorSet(bindings);
 
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView = (*m_pGlobalTextureDict)["OffscreenColor"].descriptorInfo.imageView, 
+            { .imageView = m_pResourceManager->getTexture("OffscreenColor").descriptorInfo.imageView, 
             .format = vk::Format::eR32G32B32A32Sfloat, 
             .oldLayout = vk::ImageLayout::eUndefined, 
             .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -93,8 +74,8 @@ public:
             .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite }
         };
         AttachmentInfo depthStencilAttachment = {
-            .imageView = (*m_pGlobalTextureDict)["OffscreenDepth"].descriptorInfo.imageView,
-            .format = depthFormat, 
+            .imageView = m_pResourceManager->getTexture("OffscreenDepth").descriptorInfo.imageView,
+            .format = findDepthFormat(*m_pContext), 
             .oldLayout = vk::ImageLayout::eUndefined,
             .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
             .srcStageMask = vk::PipelineStageFlagBits::eEarlyFragmentTests,
@@ -147,10 +128,10 @@ public:
         };
         commandBuffer.setScissor(0, 1, &scissor);
 
-        vk::Buffer vertexBuffers[] = {(*m_pGlobalBufferDict)["VertexBuffer"]};
+        vk::Buffer vertexBuffers[] = {m_pResourceManager->getBuffer("VertexBuffer").descriptorInfo.buffer};
         vk::DeviceSize offsets[] = {0};
         commandBuffer.bindVertexBuffers(0, 1, vertexBuffers, offsets);
-        commandBuffer.bindIndexBuffer((*m_pGlobalBufferDict)["IndexBuffer"], 0, vk::IndexType::eUint32);
+        commandBuffer.bindIndexBuffer(m_pResourceManager->getBuffer("IndexBuffer").descriptorInfo.buffer, 0, vk::IndexType::eUint32);
         commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
         commandBuffer.drawIndexed(static_cast<uint32_t>(m_pIndices->size()), 1, 0, 0, 0);
 
@@ -170,8 +151,8 @@ private:
 
 class FinalRenderPass : public RenderPass {
 public:
-    FinalRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<std::unordered_map<std::string, Texture>> pGlobalTextureDict, std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> pGlobalBufferDict) 
-        : RenderPass(pContext, pCommandPool, pGlobalTextureDict, pGlobalBufferDict) {
+    FinalRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager) 
+        : RenderPass(pContext, pCommandPool, pResourceManager) {
     }
 
     ~FinalRenderPass() {
@@ -187,15 +168,9 @@ public:
     }
 
     void setup() {
-        // create the depth image
-        Texture depthTexture;
-        vk::Format depthFormat = findDepthFormat(*m_pContext);
-        createImage(*m_pContext, depthTexture, m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
-        createImageView(*m_pContext, depthTexture, depthFormat, vk::ImageAspectFlagBits::eDepth);
-
-        // register the created images
-        // (*m_pGlobalTextureDict)["FinalColor"] = ?; // global dict is not required for swap chain images
-        m_pGlobalTextureDict->insert({"FinalDepth", depthTexture});
+        // create the attachment images
+        // global dict is not required for swap chain images
+        m_pResourceManager->createDepthTexture("FinalDepth");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
@@ -217,8 +192,8 @@ public:
         };
         colorAttachments.push_back(colorAttachment);
         AttachmentInfo depthStencilAttachment = {
-            .imageView = (*m_pGlobalTextureDict)["FinalDepth"].descriptorInfo.imageView,
-            .format = depthFormat, 
+            .imageView = m_pResourceManager->getTexture("FinalDepth").descriptorInfo.imageView,
+            .format = findDepthFormat(*m_pContext), 
             .oldLayout = vk::ImageLayout::eUndefined,
             .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
             .srcStageMask = vk::PipelineStageFlagBits::eNone,
@@ -229,7 +204,7 @@ public:
         createVkRenderPass(colorAttachments, depthStencilAttachment);
 
         // create swap chain framebuffers
-        createSwapChainFrameBuffers(depthTexture);
+        createSwapChainFrameBuffers(m_pResourceManager->getTexture("FinalDepth"));
 
         // create a graphics pipeline for this render pass
         createRasterPipeline("shaders/final.vert.spv", "shaders/final.frag.spv", true);
@@ -284,7 +259,7 @@ public:
         m_swapChainImageIndex = newIndex;
     }
 
-    void createSwapChainFrameBuffers(Texture& swapChainDepthImage) {
+    void createSwapChainFrameBuffers(Texture swapChainDepthImage) {
         m_swapChainFramebuffers->resize(m_swapChainColorImageViews->size());
 
         for (size_t i = 0; i < m_swapChainFramebuffers->size(); ++i) {
@@ -342,37 +317,27 @@ private:
     vk::Semaphore m_renderFinishedSemaphore;
     vk::Fence m_inFlightFence;
 
+    bool m_framebufferResized = false;
 
     // scene description
     std::vector<Vertex> m_vertices;
-    vk::Buffer m_vertexBuffer;
-    vk::DeviceMemory m_vertexBufferMemory;
-
     std::vector<uint32_t> m_indices;
-    vk::Buffer m_indexBuffer;
-    vk::DeviceMemory m_indexBufferMemory;
-
-    vk::Buffer m_uniformBuffer;
-    vk::DeviceMemory m_uniformBufferMemory;
-    void* m_uniformBufferMapped;
 
     Texture m_modelTexture;
 
+    // std::shared_ptr<std::unordered_map<std::string, Texture>> m_pGlobalTextureDict {nullptr};
+    // std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> m_pGlobalBufferDict {nullptr};
+
+    std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
 
     // for the offscreen pass
     OffscreenRenderPass offscreenRenderPass;
-
-    bool m_framebufferResized = false;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
 
     FinalRenderPass finalRenderPass;
-
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
-
-    std::shared_ptr<std::unordered_map<std::string, Texture>> m_pGlobalTextureDict {nullptr};
-    std::shared_ptr<std::unordered_map<std::string, vk::Buffer>> m_pGlobalBufferDict {nullptr};
 
 public:
     Application() 
@@ -477,41 +442,39 @@ private:
     void initVulkan() {
         m_vkContext.init("test", m_pWindow);
 
+        m_pResourceManager = std::make_shared<ResourceManager>(&m_vkContext);
 
-        m_pGlobalTextureDict = std::make_shared<std::unordered_map<std::string, Texture>>();
-        m_pGlobalBufferDict = std::make_shared<std::unordered_map<std::string, vk::Buffer>>();
         m_swapChainFramebuffers = std::make_shared<std::vector<vk::Framebuffer>>();
         m_swapChainColorImages = std::make_shared<std::vector<vk::Image>>();
         m_swapChainColorImageViews = std::make_shared<std::vector<vk::ImageView>>();
 
-        OffscreenRenderPass o(&m_vkContext, &m_commandPool, m_pGlobalTextureDict, m_pGlobalBufferDict);
-        FinalRenderPass f(&m_vkContext, &m_commandPool, m_pGlobalTextureDict, m_pGlobalBufferDict);
+        OffscreenRenderPass o(&m_vkContext, &m_commandPool, m_pResourceManager);
+        FinalRenderPass f(&m_vkContext, &m_commandPool, m_pResourceManager);
         offscreenRenderPass = o;
         finalRenderPass = f;
 
         createSwapChain();
         createSwapChainImageViews();
+        m_pResourceManager->setExtent(m_swapChainExtent);
+        offscreenRenderPass.setExtent(m_swapChainExtent);
+        finalRenderPass.setExtent(m_swapChainExtent);
         createCommandPool();
+        m_pResourceManager->setCommandPool(&m_commandPool);
 
-        createModelTextureImage();
+        createModelTextureImage("textures/viking_room.png");
         createModelTextureImageView();
         createModelTextureSampler();
-        m_pGlobalTextureDict->insert({"ModelTexture", m_modelTexture});
+        m_pResourceManager->insertTexture("ModelTexture", m_modelTexture);
         loadObjModel(m_vertices, m_indices);
         offscreenRenderPass.setIndexList(&m_indices);
 
-        createVertexBuffer();
-        m_pGlobalBufferDict->insert({"VertexBuffer", m_vertexBuffer});
-        createIndexBuffer();
-        m_pGlobalBufferDict->insert({"IndexBuffer", m_indexBuffer});
-        createUniformBuffer();
-        m_pGlobalBufferDict->insert({"UniformBuffer", m_uniformBuffer});
+        m_pResourceManager->createVertexBuffer("VertexBuffer", m_vertices);
+        m_pResourceManager->createIndexBuffer("IndexBuffer", m_indices);
+        m_pResourceManager->createUniformBuffer("CameraBuffer");
 
-        offscreenRenderPass.setExtent(m_swapChainExtent);
         offscreenRenderPass.setup();
 
         finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages, m_swapChainColorImageViews);
-        finalRenderPass.setExtent(m_swapChainExtent);
         finalRenderPass.setup();
 
         createCommandBuffers();
@@ -537,28 +500,12 @@ private:
     void cleanup() {
         ImGui_ImplVulkan_Shutdown();
         m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
+        
         offscreenRenderPass.cleanup();
         finalRenderPass.cleanup();
 
-        // cleanup offscreen render pass data
-
-        m_vkContext.m_device.destroyBuffer(m_uniformBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(m_uniformBufferMemory, nullptr);
-        m_vkContext.m_device.destroyBuffer(m_vertexBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(m_vertexBufferMemory, nullptr);
-        m_vkContext.m_device.destroyBuffer(m_indexBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(m_indexBufferMemory, nullptr);
-
-        for (auto buffer : *m_pGlobalBufferDict) {
-            // std::cout << buffer.first << std::endl;
-            // m_pGlobalBufferDict->erase(buffer.first);
-        }
-
-        for (auto texture : *m_pGlobalTextureDict) {
-            destroyTexture(m_vkContext, texture.second);
-            // std::cout << texture.first << std::endl;
-            // m_pGlobalTextureDict->erase(texture.first);
-        }
+        m_pResourceManager->destroyTextures();
+        m_pResourceManager->destroyBuffers();
 
         cleanupSwapChain();
 
@@ -723,7 +670,7 @@ private:
             throw std::runtime_error("failed to begin recording command buffer!");
         }
 
-        updateUniformBuffer();
+        updateUniformBuffer("CameraBuffer");
         offscreenRenderPass.record(commandBuffer);
 
         vk::ImageMemoryBarrier barrier { 
@@ -731,7 +678,7 @@ private:
             .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = (*m_pGlobalTextureDict)["OffscreenColor"].image,
+            .image = m_pResourceManager->getTexture("OffscreenColor").image,
             .subresourceRange = { 
                 .baseMipLevel = 0,
                 .levelCount = 1,
@@ -872,9 +819,9 @@ private:
         // updateFinalDescriptorSets();
     }
 
-    void createModelTextureImage() {
+    void createModelTextureImage(const std::string& filename) {
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load("textures/viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         vk::DeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
@@ -941,55 +888,7 @@ private:
         }
     }
 
-    void createVertexBuffer() {
-        vk::DeviceSize bufferSize = sizeof(m_vertices[0]) * m_vertices.size();
-        
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
-
-        void* data;
-        data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
-            memcpy(data, m_vertices.data(), (size_t)bufferSize);
-        m_vkContext.m_device.unmapMemory(stagingBufferMemory);
-
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, m_vertexBuffer, m_vertexBufferMemory);
-
-        copyBuffer(m_vkContext, m_commandPool, stagingBuffer, m_vertexBuffer, bufferSize);
-
-        m_vkContext.m_device.destroyBuffer(stagingBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
-    }
-
-    void createIndexBuffer() {
-        vk::DeviceSize bufferSize = sizeof(m_indices[0]) * m_indices.size();
-        
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
-
-        void* data;
-        data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
-            memcpy(data, m_indices.data(), (size_t)bufferSize);
-        m_vkContext.m_device.unmapMemory(stagingBufferMemory);
-
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, m_indexBuffer, m_indexBufferMemory);
-
-        copyBuffer(m_vkContext, m_commandPool, stagingBuffer, m_indexBuffer, bufferSize);
-
-        m_vkContext.m_device.destroyBuffer(stagingBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
-    }
-
-    void createUniformBuffer() {
-        vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
-
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, m_uniformBuffer, m_uniformBufferMemory);
-
-        m_uniformBufferMapped = m_vkContext.m_device.mapMemory(m_uniformBufferMemory, 0, bufferSize);
-    }
-
-    void updateUniformBuffer() {
+    void updateUniformBuffer(std::string name) {
         static auto startTime = std::chrono::high_resolution_clock::now();
 
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -1004,7 +903,7 @@ private:
         // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.
         ubo.proj[1][1] *= -1;
 
-        memcpy(m_uniformBufferMapped, &ubo, sizeof(ubo));
+        memcpy(m_pResourceManager->getMappedBuffer(name), &ubo, sizeof(ubo));
     }
 };
 
