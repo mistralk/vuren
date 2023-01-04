@@ -77,6 +77,14 @@ public:
     Buffer getBuffer(const std::string& name);
     void* getMappedBuffer(const std::string& name);
 
+    void insertBuffer(const std::string& name, Buffer buffer) {
+        m_globalBufferDict.insert({name, buffer});
+    }
+
+    void insertTexture(const std::string& name, Texture texture) {
+        m_globalTextureDict.insert({name, texture});
+    }
+
 private:
     std::unordered_map<std::string, Texture> m_globalTextureDict;
     std::unordered_map<std::string, Buffer> m_globalBufferDict;

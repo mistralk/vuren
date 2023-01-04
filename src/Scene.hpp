@@ -22,12 +22,22 @@ public:
         return m_objects;
     }
 
+    uint32_t getInstanceCount() {
+        return m_instanceCount;
+    }
+
     void addObject(SceneObject object) {
         m_objects.push_back(object);
     }
 
+    void setInstanceCount(uint32_t instanceCount) {
+        m_instanceCount = instanceCount;
+    }
+
 private:
     std::vector<SceneObject> m_objects;
+
+    uint32_t m_instanceCount;
 
 };
 

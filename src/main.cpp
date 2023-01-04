@@ -26,6 +26,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <memory>
+#include <random>
 
 #include "VulkanContext.hpp"
 #include "Common.hpp"
@@ -135,10 +136,13 @@ public:
             auto object = m_pScene->getObject(i);
             vertexBuffers[i] = object.vertexBuffer->descriptorInfo.buffer;
 
+            vk::Buffer instanceBuffer = m_pResourceManager->getBuffer("InstanceBuffer").descriptorInfo.buffer;
+
             commandBuffer.bindVertexBuffers(0, 1, vertexBuffers.data(), offsets);
+            commandBuffer.bindVertexBuffers(1, 1, &instanceBuffer, offsets);
             commandBuffer.bindIndexBuffer(object.indexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
             commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
-            commandBuffer.drawIndexed(object.indexBufferSize, 1, 0, 0, 0);
+            commandBuffer.drawIndexed(object.indexBufferSize, m_pScene->getInstanceCount(), 0, 0, 0);
         }
 
         commandBuffer.endRenderPass();
@@ -370,11 +374,13 @@ private:
             { vk::DescriptorType::eInputAttachment, 1000 }
         };
         
-        vk::DescriptorPoolCreateInfo poolCreateInfo = { .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                                        .maxSets = 1000,
-                                                        .poolSizeCount = std::size(poolSizes),
-                                                        .pPoolSizes = poolSizes };
-        
+        vk::DescriptorPoolCreateInfo poolCreateInfo = { 
+            .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+            .maxSets = 1000,
+            .poolSizeCount = std::size(poolSizes),
+            .pPoolSizes = poolSizes
+        };
+
         if (m_vkContext.m_device.createDescriptorPool(&poolCreateInfo, nullptr, &m_imguiDescriptorPool) != vk::Result::eSuccess) {
             throw std::runtime_error("failed to create descriptor pool for imgui!");
         }
@@ -383,14 +389,16 @@ private:
         ImGui::CreateContext();
         ImGui_ImplGlfw_InitForVulkan(m_pWindow, true);
 
-        ImGui_ImplVulkan_InitInfo initInfo = { .Instance = m_vkContext.m_instance,
-                                               .PhysicalDevice = m_vkContext.m_physicalDevice,
-                                               .Device = m_vkContext.m_device,
-                                               .Queue = m_vkContext.m_graphicsQueue,
-                                               .DescriptorPool = m_imguiDescriptorPool,
-                                               .MinImageCount = m_imageCount,
-                                               .ImageCount = m_imageCount,
-                                               .MSAASamples = VK_SAMPLE_COUNT_1_BIT };
+        ImGui_ImplVulkan_InitInfo initInfo = { 
+            .Instance = m_vkContext.m_instance,
+            .PhysicalDevice = m_vkContext.m_physicalDevice,
+            .Device = m_vkContext.m_device,
+            .Queue = m_vkContext.m_graphicsQueue,
+            .DescriptorPool = m_imguiDescriptorPool,
+            .MinImageCount = m_imageCount,
+            .ImageCount = m_imageCount,
+            .MSAASamples = VK_SAMPLE_COUNT_1_BIT
+        };
         
         ImGui_ImplVulkan_Init(&initInfo, finalRenderPass.getRenderPass());
 
@@ -461,11 +469,8 @@ private:
         m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
         auto object = m_pResourceManager->loadObjModel("Room", "models/viking_room.obj");
         m_pScene->addObject(object);
-        // ObjectInstance instance = {
-        //     .transform = transform,
-        //     .objectId = static_cast<uint32_t>(m_pScene->getObjects().size())
-        // };
-        // m_instances.push_back(instance);
+
+        createRandomInstances();
 
         offscreenRenderPass.setup();
 
@@ -514,6 +519,60 @@ private:
 
         glfwDestroyWindow(m_pWindow);
         glfwTerminate();
+    }
+
+    void createRandomInstances() {
+        std::default_random_engine rng((unsigned)time(nullptr));
+        std::uniform_real_distribution<float> uniformDist(0.0, 1.0);
+        std::uniform_real_distribution<float> uniformDistPos(-1.0, 1.0);
+        for (uint32_t i = 0; i < 10; ++i) {
+            ObjectInstance instance;
+            
+            auto pos = glm::translate(glm::mat4(1.0f), glm::vec3(uniformDistPos(rng), uniformDistPos(rng), uniformDistPos(rng)));
+            auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.5f));
+            auto rot = glm::rotate(glm::mat4(1.0f), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            instance.transform = pos * rot * scale;
+
+            // glsl and glm: uses column-major order matrices of column vectors
+            for(int y = 0; y < 4; ++y)
+                printf("column %d: %f %f %f %f\n", y, instance.transform[y][0], instance.transform[y][1], instance.transform[y][2], instance.transform[y][3]);
+            printf("\n");
+            
+            instance.objectId = static_cast<uint32_t>(m_pScene->getObjects().size());
+            
+            m_instances.push_back(instance);
+        }
+
+        m_pScene->setInstanceCount(m_instances.size());
+
+        Buffer buffer;
+
+        vk::DeviceSize bufferSize = m_instances.size() * sizeof(ObjectInstance);
+
+        // staging buffer
+        vk::Buffer stagingBuffer;
+        vk::DeviceMemory stagingBufferMemory;
+        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+        void* data;
+        data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
+            memcpy(data, m_instances.data(), (size_t)bufferSize);
+        m_vkContext.m_device.unmapMemory(stagingBufferMemory);
+
+        // instance buffer
+        vk::Buffer instanceBuffer;
+        vk::DeviceMemory instanceBufferMemory;
+        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, instanceBuffer, instanceBufferMemory);
+
+        // copy to staging buffer
+        copyBuffer(m_vkContext, m_commandPool, stagingBuffer, instanceBuffer, bufferSize);
+
+        m_vkContext.m_device.destroyBuffer(stagingBuffer, nullptr);
+        m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
+
+        buffer.descriptorInfo.buffer = instanceBuffer;
+        buffer.memory = instanceBufferMemory;
+        m_pResourceManager->insertBuffer("InstanceBuffer", buffer);
     }
 
     void createSwapChain() {
@@ -824,6 +883,10 @@ private:
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 10.0f);
+
+        // ubo.model = glm::identity<glm::mat4>();
+        // ubo.view = glm::identity<glm::mat4>();
+        // ubo.proj = glm::identity<glm::mat4>();
 
         // GLM's Y coordinate of the clip coordinates is inverted
         // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.

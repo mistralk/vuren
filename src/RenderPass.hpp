@@ -59,6 +59,14 @@ public:
         // Fixed function: Vertex input
         auto bindingDescription = Vertex::getBindingDescription();
         auto attributeDescription = Vertex::getAttributeDescriptions();
+    
+        auto instanceBindingDescription = ObjectInstance::getBindingDescription();
+        auto instanceAttributeDescription = ObjectInstance::getAttributeDescriptions();
+        std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
+        attributeDescriptions.insert(attributeDescriptions.end(), attributeDescription.begin(), attributeDescription.end());
+        attributeDescriptions.insert(attributeDescriptions.end(), instanceAttributeDescription.begin(), instanceAttributeDescription.end());
+        
+        std::vector<vk::VertexInputBindingDescription> bindingDescriptions = {bindingDescription, instanceBindingDescription};
 
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
         if (m_blitPass) {
@@ -68,10 +76,10 @@ public:
             vertexInputInfo.pVertexAttributeDescriptions = nullptr;
         }
         else {
-            vertexInputInfo.vertexBindingDescriptionCount = 1;
-            vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-            vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescription.size());
-            vertexInputInfo.pVertexAttributeDescriptions = attributeDescription.data();
+            vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+            vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+            vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+            vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
         }
         
         // Fixed function: Input assembly
