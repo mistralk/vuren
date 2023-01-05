@@ -57,7 +57,7 @@ public:
     ResourceManager(VulkanContext* pContext);
     ~ResourceManager();
 
-    void createTexture_RGB32Sfloat(const std::string& name);
+    void createTextureRGBA32Sfloat(const std::string& name);
     void createDepthTexture(const std::string& name);
     void createModelTexture(const std::string& name, const std::string& filename);
     void createModelTextureSampler(Texture& texture);

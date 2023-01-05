@@ -38,6 +38,13 @@
 
 namespace vrb {
 
+// temporary: for output texture control in GUI
+std::vector<std::string> kOffscreenOutputTextureNames;
+int kCurrentItem = 0;
+bool kDirty = false;
+
+const uint32_t kInstanceCount = 100;
+
 class OffscreenRenderPass : public RenderPass {
 public:
     OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
@@ -52,8 +59,14 @@ public:
 
     void setup() {
         // create textures for the attachments
-        m_pResourceManager->createTexture_RGB32Sfloat("OffscreenColor");
+        m_pResourceManager->createTextureRGBA32Sfloat("OffscreenColor");
+        m_pResourceManager->createTextureRGBA32Sfloat("OffscreenPosWorld");
+        m_pResourceManager->createTextureRGBA32Sfloat("OffscreenNormal");
         m_pResourceManager->createDepthTexture("OffscreenDepth");
+
+        kOffscreenOutputTextureNames.push_back("OffscreenColor");
+        kOffscreenOutputTextureNames.push_back("OffscreenPosWorld");
+        kOffscreenOutputTextureNames.push_back("OffscreenNormal");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
@@ -64,15 +77,38 @@ public:
 
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView = m_pResourceManager->getTexture("OffscreenColor").descriptorInfo.imageView, 
-            .format = vk::Format::eR32G32B32A32Sfloat, 
-            .oldLayout = vk::ImageLayout::eUndefined, 
-            .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
-            .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-            .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-            .srcAccessMask = vk::AccessFlagBits::eNone,
-            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite }
+            {
+                .imageView = m_pResourceManager->getTexture("OffscreenColor").descriptorInfo.imageView, 
+                .format = vk::Format::eR32G32B32A32Sfloat, 
+                .oldLayout = vk::ImageLayout::eUndefined, 
+                .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+                .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                .srcAccessMask = vk::AccessFlagBits::eNone,
+                .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
+            },
+            {
+                .imageView = m_pResourceManager->getTexture("OffscreenPosWorld").descriptorInfo.imageView, 
+                .format = vk::Format::eR32G32B32A32Sfloat, 
+                .oldLayout = vk::ImageLayout::eUndefined, 
+                .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+                .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                .srcAccessMask = vk::AccessFlagBits::eNone,
+                .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
+            },
+            {
+                .imageView = m_pResourceManager->getTexture("OffscreenNormal").descriptorInfo.imageView, 
+                .format = vk::Format::eR32G32B32A32Sfloat, 
+                .oldLayout = vk::ImageLayout::eUndefined, 
+                .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+                .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                .srcAccessMask = vk::AccessFlagBits::eNone,
+                .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
+            }
         };
+
         AttachmentInfo depthStencilAttachment = {
             .imageView = m_pResourceManager->getTexture("OffscreenDepth").descriptorInfo.imageView,
             .format = findDepthFormat(*m_pContext), 
@@ -94,9 +130,11 @@ public:
     }
 
     void record(vk::CommandBuffer commandBuffer) {
-        std::array<vk::ClearValue, 2> clearValues {};
+        std::array<vk::ClearValue, 4> clearValues {};
         clearValues[0].color = vk::ClearColorValue {std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
-        clearValues[1].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
+        clearValues[1].color = vk::ClearColorValue {std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
+        clearValues[2].color = vk::ClearColorValue {std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}};
+        clearValues[3].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
 
         vk::RenderPassBeginInfo renderPassInfo { 
             .renderPass = m_renderPass,
@@ -178,7 +216,7 @@ public:
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
-            {"OffscreenColor", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
+            {kOffscreenOutputTextureNames[kCurrentItem], vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
         };
         createDescriptorSet(bindings);
 
@@ -288,6 +326,58 @@ public:
                 throw std::runtime_error("failed to create swapchain framebuffer!");
             }
         }
+
+        m_colorAttachmentCount = 1;
+    }
+
+    void updateDescriptorSets() {
+        std::vector<ResourceBindingInfo> bindings = {
+            {kOffscreenOutputTextureNames[kCurrentItem], vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
+        };
+
+        std::vector<vk::WriteDescriptorSet> descriptorWrites;
+
+        for (size_t i = 0; i < bindings.size(); ++i) {
+            vk::DescriptorImageInfo imageInfo;
+            vk::DescriptorBufferInfo bufferInfo;
+
+            vk::DescriptorBufferInfo* pBufferInfo = nullptr;
+            vk::DescriptorImageInfo* pImageInfo = nullptr;
+
+            switch (bindings[i].descriptorType) {
+                case vk::DescriptorType::eCombinedImageSampler:
+                    imageInfo.sampler = m_pResourceManager->getTexture(bindings[i].name).descriptorInfo.sampler;
+                    imageInfo.imageView = m_pResourceManager->getTexture(bindings[i].name).descriptorInfo.imageView;
+                    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    pImageInfo = &imageInfo;
+                    break;
+                
+                case vk::DescriptorType::eUniformBuffer:
+                    bufferInfo.buffer = m_pResourceManager->getBuffer(bindings[i].name).descriptorInfo.buffer;
+                    bufferInfo.offset = 0;
+                    bufferInfo.range = sizeof(UniformBufferObject);
+                    pBufferInfo = &bufferInfo;
+                    break;
+
+                default:
+                    throw std::runtime_error("unsupported descriptor type!"); 
+            }
+
+            vk::WriteDescriptorSet bufferWrite = { 
+                .dstSet = m_descriptorSet,
+                .dstBinding = static_cast<uint32_t>(i),
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = bindings[i].descriptorType,
+                .pImageInfo = pImageInfo,
+                .pBufferInfo = pBufferInfo,
+                .pTexelBufferView = nullptr
+            };
+
+            descriptorWrites.push_back(bufferWrite);
+        }
+        
+        m_pContext->m_device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
 
 private:
@@ -338,15 +428,8 @@ private:
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
 
 public:
-    Application() 
-        {
-        //   m_pGlobalTextureDict(std::make_shared<std::unordered_map<std::string, Texture>>()),
-        //   m_pGlobalBufferDict(std::make_shared<std::unordered_map<std::string, vk::Buffer>>()),
-        //   m_swapChainFramebuffers(std::make_shared<std::vector<vk::Framebuffer>>()),
-        //   m_swapChainColorImages(std::make_shared<std::vector<vk::Image>>()),
-        //   m_swapChainColorImageViews(std::make_shared<std::vector<vk::ImageView>>()),
-        // offscreenRenderPass(&m_vkContext, &m_commandPool, m_pGlobalTextureDict, m_pGlobalBufferDict),
-        //   finalRenderPass(&m_vkContext, &m_commandPool, m_pGlobalTextureDict, m_pGlobalBufferDict)
+    Application() {
+
     }
 
     void run() {
@@ -421,6 +504,21 @@ private:
         ImGui::Begin("Render Configuration");
         ImGui::Text("Statistics");
         ImGui::Text(" %.2f FPS (%.2f ms)", imguiIO.Framerate, imguiIO.DeltaTime);
+
+        if (ImGui::BeginCombo("Output", kOffscreenOutputTextureNames[kCurrentItem].c_str(), 0)) {
+            for (int i = 0; i < kOffscreenOutputTextureNames.size(); ++i) {
+                const bool isSelected = (kCurrentItem == i);
+                if (ImGui::Selectable(kOffscreenOutputTextureNames[i].c_str(), isSelected)) {
+                    kCurrentItem = i;
+                    kDirty = true;
+                }
+
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
         ImGui::End();
     }
 
@@ -525,12 +623,12 @@ private:
         std::default_random_engine rng((unsigned)time(nullptr));
         std::uniform_real_distribution<float> uniformDist(0.0, 1.0);
         std::uniform_real_distribution<float> uniformDistPos(-1.0, 1.0);
-        for (uint32_t i = 0; i < 10; ++i) {
+        for (uint32_t i = 0; i < kInstanceCount; ++i) {
             ObjectInstance instance;
             
-            auto pos = glm::translate(glm::mat4(1.0f), glm::vec3(uniformDistPos(rng), uniformDistPos(rng), uniformDistPos(rng)));
-            auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.5f));
-            auto rot = glm::rotate(glm::mat4(1.0f), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            auto pos = glm::translate(glm::identity<glm::mat4>(), glm::vec3(uniformDistPos(rng), uniformDistPos(rng), uniformDistPos(rng)));
+            auto scale = glm::scale(glm::identity<glm::mat4>(), glm::vec3(0.5f, 0.5f, 0.5f));
+            auto rot = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
             instance.transform = pos * rot * scale;
 
             // glsl and glm: uses column-major order matrices of column vectors
@@ -732,7 +830,7 @@ private:
             .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = m_pResourceManager->getTexture("OffscreenColor").image,
+            .image = m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]).image,
             .subresourceRange = { 
                 .baseMipLevel = 0,
                 .levelCount = 1,
@@ -778,7 +876,12 @@ private:
         // at the start of the frame, we want to wait until the previous frame has finished
         do {
             result = m_vkContext.m_device.waitForFences(1, &m_inFlightFence, VK_TRUE, UINT64_MAX);
-        } while(result == vk::Result::eTimeout);
+        } while (result == vk::Result::eTimeout);
+
+        if (kDirty) {
+            finalRenderPass.updateDescriptorSets();
+            kDirty = false;
+        }
 
         uint32_t imageIndex;
         // "...to be signaled when the presentation engine is finished using the image. 

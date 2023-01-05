@@ -44,7 +44,7 @@ void VulkanContext::createInstance() {
         .applicationVersion    = 1,
         .pEngineName           = nullptr, 
         .engineVersion         = 1,
-        .apiVersion            = VK_API_VERSION_1_1
+        .apiVersion            = VK_API_VERSION_1_2
     };
 
     vk::InstanceCreateInfo instanceCreateInfo {

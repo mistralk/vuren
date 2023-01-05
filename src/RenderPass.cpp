@@ -39,7 +39,6 @@ void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAtta
             .finalLayout = attachmentInfo.newLayout
         };
         
-        // TODO: how to deal with PresentSrcKHR layout for final render pass?
         vk::AttachmentReference colorAttachmentRef { 
             .attachment = static_cast<uint32_t>(attachments.size()),
             .layout = attachmentInfo.newLayout == vk::ImageLayout::ePresentSrcKHR ? vk::ImageLayout::eColorAttachmentOptimal : attachmentInfo.newLayout
@@ -75,7 +74,7 @@ void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAtta
 
     vk::SubpassDescription subpass = { 
         .pipelineBindPoint = vk::PipelineBindPoint::eGraphics,
-        .colorAttachmentCount = 1,
+        .colorAttachmentCount = static_cast<uint32_t>(colorAttachmentRefs.size()),
         .pColorAttachments = colorAttachmentRefs.data(),
         .pDepthStencilAttachment = &depthAttachmentRef 
     };
@@ -131,6 +130,8 @@ void RenderPass::createFramebuffer(const std::vector<AttachmentInfo>& colorAttac
     if (m_pContext->m_device.createFramebuffer(&framebufferInfo, nullptr, &m_framebuffer) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create framebuffer!");
     }
+
+    m_colorAttachmentCount = static_cast<uint32_t>(colorAttachmentInfos.size());
 }
 
 void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bindingInfos) {
@@ -251,6 +252,7 @@ void RenderPass::createRasterPipeline(const std::string& vertShaderPath, const s
     m_rasterPipeline.setPipelineLayout(&m_pipelineLayout);
     m_rasterPipeline.setDescriptorSetLayout(&m_descriptorSetLayout);
     m_rasterPipeline.setBlitPass(isBlitPass);
+    m_rasterPipeline.setColorAttachmentCount(m_colorAttachmentCount);
     m_rasterPipeline.setup(vertShaderPath, fragShaderPath);
 }
 

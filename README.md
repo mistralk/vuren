@@ -1,22 +1,24 @@
 # vulkan_render_base
 
-A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by several tutorials and examples. I started this project with following the great [Vulkan Tutorial](https://vulkan-tutorial.com/), but now it has a slightly different code structure.
+![teaser](./docs/imgs/2023-01-06-02-25-57.png)
+
+A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by several tutorials and examples. I started this project with following the great [Vulkan Tutorial](https://vulkan-tutorial.com/), but now it has a slightly different architecture and additional features.
 
 Currently it has only been tested on Ubuntu 22.04.
 
 ## Prerequisites
 
-- vulkan
+- Vulkan SDK
 - glslangValidator
-- glfw3
-- glm
+- GLFW3
+- GLM
 
 ## Features
 
 - [x] Vulkan context initialization
 - [x] Render pass abstraction
-- [x] GUI and basic statistics
-- [ ] Render skeleton for both rasterization and ray tracing
+- [x] GUI
+- [x] G-Buffer rendering pass template with rasterization
 - [ ] Reference unbiased path tracer
 
 ## Good references and resources

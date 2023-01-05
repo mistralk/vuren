@@ -142,6 +142,7 @@ public:
         };
 
         // Fixed function: Color blending
+        // default setup for color attachments
         vk::PipelineColorBlendAttachmentState colorBlendAttachment { 
             .blendEnable = VK_FALSE,
             .srcColorBlendFactor = vk::BlendFactor::eOne,
@@ -156,11 +157,13 @@ public:
                             | vk::ColorComponentFlagBits::eA
         };
 
+        std::vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachments(m_colorAttachmentCount, colorBlendAttachment);
+
         vk::PipelineColorBlendStateCreateInfo colorBlending { 
             .logicOpEnable = VK_FALSE,
             .logicOp = vk::LogicOp::eCopy,
-            .attachmentCount = 1,
-            .pAttachments = &colorBlendAttachment,
+            .attachmentCount = m_colorAttachmentCount,
+            .pAttachments = colorBlendAttachments.data(),
             .blendConstants = std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f}
         };
 
@@ -210,6 +213,10 @@ public:
         m_blitPass = isBlitPass;
     }
 
+    void setColorAttachmentCount(uint32_t colorAttachmentCount) {
+        m_colorAttachmentCount = colorAttachmentCount;
+    }
+
 private:
     vk::ShaderModule createShaderModule(const std::vector<char>& code) {
         vk::ShaderModuleCreateInfo createInfo { 
@@ -231,6 +238,7 @@ private:
     vk::RenderPass* m_pRenderPass {nullptr};
     vk::DescriptorSetLayout* m_pDescriptorSetLayout {nullptr};
     vk::PipelineLayout* m_pPipelineLayout {nullptr};
+    uint32_t m_colorAttachmentCount {0};
 
     bool m_blitPass;
 
@@ -289,6 +297,8 @@ protected:
     vk::CommandPool* m_pCommandPool {nullptr};
 
     vk::Extent2D m_extent;
+
+    uint32_t m_colorAttachmentCount {0};
 
     std::shared_ptr<ResourceManager> m_pResourceManager {nullptr};
     std::shared_ptr<Scene> m_pScene {nullptr};

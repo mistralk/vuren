@@ -34,7 +34,7 @@ void* ResourceManager::getMappedBuffer(const std::string& name) {
     return m_uniformBufferMappedDict[name];
 }
 
-void ResourceManager::createTexture_RGB32Sfloat(const std::string& name) {
+void ResourceManager::createTextureRGBA32Sfloat(const std::string& name) {
     Texture texture;
     createImage(*m_pContext, texture,
         m_extent.width, m_extent.height, 
@@ -263,12 +263,16 @@ SceneObject ResourceManager::loadObjModel(const std::string& name, const std::st
                 attrib.vertices[3 * index.vertex_index + 2]
             };
 
+            vertex.normal = {
+                attrib.normals[3 * index.normal_index + 0],
+                attrib.normals[3 * index.normal_index + 1],
+                attrib.normals[3 * index.normal_index + 2]
+            };
+
             vertex.texCoord = {
                 attrib.texcoords[2 * index.texcoord_index + 0],
                 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
             };
-
-            vertex.color = {1.0f, 1.0f, 1.0f};
 
             if (uniqueVertices.count(vertex) == 0) {
                 uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
