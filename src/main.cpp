@@ -43,7 +43,7 @@ std::vector<std::string> kOffscreenOutputTextureNames;
 int kCurrentItem = 0;
 bool kDirty = false;
 
-const uint32_t kInstanceCount = 50;
+const uint32_t kInstanceCount = 10;
 
 class OffscreenRenderPass : public RenderPass {
 public:
@@ -632,7 +632,7 @@ private:
             
             // glsl and glm: uses column-major order matrices of column vectors
             instance.world = pos * rot * scale;
-            
+            instance.invTransposeWorld = glm::transpose(glm::inverse(instance.world));
             instance.objectId = static_cast<uint32_t>(m_pScene->getObjects().size());
             
             m_instances.push_back(instance);
@@ -981,13 +981,10 @@ private:
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         Camera ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        // ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = glm::lookAt(glm::vec3(3.0 * glm::cos(time * glm::radians(90.0f)), 3.0 * glm::sin(time * glm::radians(90.0f)), 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        // ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 10.0f);
-
-        // ubo.model = glm::identity<glm::mat4>();
-        // ubo.view = glm::identity<glm::mat4>();
-        // ubo.proj = glm::identity<glm::mat4>();
 
         // GLM's Y coordinate of the clip coordinates is inverted
         // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.

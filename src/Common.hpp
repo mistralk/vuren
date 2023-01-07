@@ -68,11 +68,12 @@ struct SceneObject {
 
 struct ObjectInstance {
     glm::mat4x4 world;
-    // glm::mat4x4 invTransposeWorld;
+    glm::mat4x4 invTransposeWorld;
     uint32_t objectId;
 
-    static std::array<vk::VertexInputAttributeDescription, 5> getAttributeDescriptions() {
-        std::array<vk::VertexInputAttributeDescription, 5> attributeDescriptions{};
+    static std::array<vk::VertexInputAttributeDescription, 9> getAttributeDescriptions() {
+        std::array<vk::VertexInputAttributeDescription, 9> attributeDescriptions{};
+
         // world matrix 4x4
         for (uint32_t i = 0; i < 4; ++i) {
             attributeDescriptions[i].format = vk::Format::eR32G32B32A32Sfloat;
@@ -80,11 +81,14 @@ struct ObjectInstance {
         }
 
         // transpose of inverse of world matrix 4x4
+        for (uint32_t i = 4; i < 8; ++i) {
+            attributeDescriptions[i].format = vk::Format::eR32G32B32A32Sfloat;
+            attributeDescriptions[i].offset = i * 4 * sizeof(float);
+        }
 
-        // object id 
-        attributeDescriptions[4].location = 7;
-        attributeDescriptions[4].format = vk::Format::eR32Sint;
-        attributeDescriptions[4].offset = 16 * sizeof(float); // offsetof(ObjectInstance, objectId);
+        // object id
+        attributeDescriptions[8].format = vk::Format::eR32Sint;
+        attributeDescriptions[8].offset = 32 * sizeof(float); // offsetof(ObjectInstance, objectId);
 
         return attributeDescriptions;
     }
