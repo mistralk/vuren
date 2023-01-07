@@ -1,4 +1,5 @@
 #define VULKAN_HPP_NO_CONSTRUCTORS
+#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
 #include <GLFW/glfw3.h>
 #define GLM_FORCE_RADIANS
@@ -27,6 +28,10 @@
 #include <unordered_map>
 #include <memory>
 #include <random>
+
+#if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+    VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+#endif
 
 #include "VulkanContext.hpp"
 #include "Common.hpp"
@@ -59,14 +64,14 @@ public:
 
     void setup() {
         // create textures for the attachments
-        m_pResourceManager->createTextureRGBA32Sfloat("OffscreenColor");
-        m_pResourceManager->createTextureRGBA32Sfloat("OffscreenPosWorld");
-        m_pResourceManager->createTextureRGBA32Sfloat("OffscreenNormal");
-        m_pResourceManager->createDepthTexture("OffscreenDepth");
+        m_pResourceManager->createTextureRGBA32Sfloat("RasterColor");
+        m_pResourceManager->createTextureRGBA32Sfloat("RasterPosWorld");
+        m_pResourceManager->createTextureRGBA32Sfloat("RasterNormalWorld");
+        m_pResourceManager->createDepthTexture("RasterDepth");
 
-        kOffscreenOutputTextureNames.push_back("OffscreenColor");
-        kOffscreenOutputTextureNames.push_back("OffscreenPosWorld");
-        kOffscreenOutputTextureNames.push_back("OffscreenNormal");
+        kOffscreenOutputTextureNames.push_back("RasterColor");
+        kOffscreenOutputTextureNames.push_back("RasterPosWorld");
+        kOffscreenOutputTextureNames.push_back("RasterNormalWorld");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
@@ -78,7 +83,7 @@ public:
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
             {
-                .imageView = m_pResourceManager->getTexture("OffscreenColor").descriptorInfo.imageView, 
+                .imageView = m_pResourceManager->getTexture("RasterColor").descriptorInfo.imageView, 
                 .format = vk::Format::eR32G32B32A32Sfloat, 
                 .oldLayout = vk::ImageLayout::eUndefined, 
                 .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -88,7 +93,7 @@ public:
                 .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
             },
             {
-                .imageView = m_pResourceManager->getTexture("OffscreenPosWorld").descriptorInfo.imageView, 
+                .imageView = m_pResourceManager->getTexture("RasterPosWorld").descriptorInfo.imageView, 
                 .format = vk::Format::eR32G32B32A32Sfloat, 
                 .oldLayout = vk::ImageLayout::eUndefined, 
                 .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -98,7 +103,7 @@ public:
                 .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
             },
             {
-                .imageView = m_pResourceManager->getTexture("OffscreenNormal").descriptorInfo.imageView, 
+                .imageView = m_pResourceManager->getTexture("RasterNormalWorld").descriptorInfo.imageView, 
                 .format = vk::Format::eR32G32B32A32Sfloat, 
                 .oldLayout = vk::ImageLayout::eUndefined, 
                 .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -110,7 +115,7 @@ public:
         };
 
         AttachmentInfo depthStencilAttachment = {
-            .imageView = m_pResourceManager->getTexture("OffscreenDepth").descriptorInfo.imageView,
+            .imageView = m_pResourceManager->getTexture("RasterDepth").descriptorInfo.imageView,
             .format = findDepthFormat(*m_pContext), 
             .oldLayout = vk::ImageLayout::eUndefined,
             .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
@@ -427,6 +432,9 @@ private:
     FinalRenderPass finalRenderPass;
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
 
+    // ray tracing
+    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProperties;
+
 public:
     Application() {
 
@@ -435,6 +443,8 @@ public:
     void run() {
         initWindow();
         initVulkan();
+        initRayTracing();
+        createBlas();
         initImGui();
         mainLoop();
         cleanup();
@@ -537,6 +547,250 @@ private:
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
         auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
         app->m_framebufferResized = true;
+    }
+
+    void initRayTracing() {
+        vk::PhysicalDeviceProperties2 prop2 {
+            .pNext = &m_rtProperties
+        };
+        m_vkContext.m_physicalDevice.getProperties2(&prop2);
+    }
+
+    struct BlasInput {
+        std::vector<vk::AccelerationStructureGeometryKHR> asGeometry;
+        std::vector<vk::AccelerationStructureBuildRangeInfoKHR> asBuildOffsetInfo;
+        vk::BuildAccelerationStructureFlagsKHR flags {0};
+    };
+
+    BlasInput objectToVkGeometryKHR(const SceneObject& object) {
+        vk::BufferDeviceAddressInfo vertexBufferAddressInfo = { .buffer = object.vertexBuffer->descriptorInfo.buffer };
+        vk::BufferDeviceAddressInfo indexBufferAddressInfo = { .buffer = object.indexBuffer->descriptorInfo.buffer };
+        
+        // only the position attribute is needed for the AS build.
+        // if position is not the first member of Vertex,
+        // we have to manually adjust vertexAddress using offsetof.
+        vk::DeviceAddress vertexAddress = m_vkContext.m_device.getBufferAddress(vertexBufferAddressInfo);
+        vk::DeviceAddress indexAddress = m_vkContext.m_device.getBufferAddress(indexBufferAddressInfo);
+
+        uint32_t maxPrimitiveCount = object.indexBufferSize / 3;
+
+        vk::AccelerationStructureGeometryTrianglesDataKHR triangles {
+            // describe buffer as array of vertexobj
+            .vertexFormat = vk::Format::eR32G32B32Sfloat,
+            .vertexData = {.deviceAddress = vertexAddress},
+            .vertexStride = sizeof(Vertex),
+            .maxVertex = object.vertexBufferSize,
+            // describe index data
+            .indexType = vk::IndexType::eUint32,
+            .indexData = {.deviceAddress = indexAddress},
+            .transformData = {} // identity transform
+        };
+
+        vk::AccelerationStructureGeometryKHR asGeom {
+            .geometryType = vk::GeometryTypeKHR::eTriangles,
+            .geometry = {.triangles = triangles},
+            .flags = vk::GeometryFlagBitsKHR::eOpaque
+        };
+
+        vk::AccelerationStructureBuildRangeInfoKHR offset {
+            .primitiveCount = maxPrimitiveCount,
+            .primitiveOffset = 0,
+            .firstVertex = 0,
+            .transformOffset = 0
+        };
+
+        BlasInput input;
+        input.asGeometry.emplace_back(asGeom);
+        input.asBuildOffsetInfo.emplace_back(offset);
+
+        return input;
+    }
+
+    struct BuildAccelerationStructure {
+        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo;
+        vk::AccelerationStructureBuildSizesInfoKHR sizeInfo;
+        const vk::AccelerationStructureBuildRangeInfoKHR* rangeInfo;
+
+        AccelerationStructure as;
+        AccelerationStructure cleanupAs;
+    };
+    std::vector<AccelerationStructure> m_blas;
+    AccelerationStructure m_tlas;
+
+    // generate one BLAS for each BlasInput
+    void buildBlas(const std::vector<BlasInput>& input, vk::BuildAccelerationStructureFlagsKHR flags) {
+
+        uint32_t blasCount = static_cast<uint32_t>(input.size());
+        vk::DeviceSize asTotalSize = 0; // all aloocated BLAS
+        uint32_t compactionsSize = 0; // BLAS requesting compaction
+        vk::DeviceSize maxScratchSize = 0; 
+
+        std::vector<BuildAccelerationStructure> buildAs(blasCount);
+
+        // prepare the information for the acceleration build commands
+        for (uint32_t i = 0; i < blasCount; ++i) {
+            buildAs[i].buildInfo = {
+                .type = vk::AccelerationStructureTypeKHR::eBottomLevel,
+                .flags = input[i].flags | flags,
+                .mode = vk::BuildAccelerationStructureModeKHR::eBuild,
+                .geometryCount = static_cast<uint32_t>(input[i].asGeometry.size()),
+                .pGeometries = input[i].asGeometry.data()
+            };
+
+            buildAs[i].rangeInfo = input[i].asBuildOffsetInfo.data();
+
+            // find sizes to create acceleration structure and scratch
+            std::vector<uint32_t> maxPrimCount(input[i].asBuildOffsetInfo.size());
+            for (auto tt = 0; tt < input[i].asBuildOffsetInfo.size(); ++tt)
+                maxPrimCount[tt] = input[i].asBuildOffsetInfo[tt].primitiveCount;
+            
+            m_vkContext.m_device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, &buildAs[i].buildInfo, maxPrimCount.data(), &buildAs[i].sizeInfo);
+
+            asTotalSize += buildAs[i].sizeInfo.accelerationStructureSize;
+            maxScratchSize = std::max(maxScratchSize, buildAs[i].sizeInfo.buildScratchSize);
+            if ((buildAs[i].buildInfo.flags & vk::BuildAccelerationStructureFlagBitsKHR::eAllowCompaction) == vk::BuildAccelerationStructureFlagBitsKHR::eAllowCompaction)
+                compactionsSize += 1;
+        }
+
+        // allocate the "largest" scratch buffer holding the temporary data of the acceleration structure builder
+        Buffer scratchBuffer = createBuffer(m_vkContext, maxScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        vk::BufferDeviceAddressInfo scratchBufferAddressInfo = { .buffer = scratchBuffer.descriptorInfo.buffer };
+        vk::DeviceAddress scratchAddress = m_vkContext.m_device.getBufferAddress(scratchBufferAddressInfo);
+
+        vk::QueryPool queryPool{VK_NULL_HANDLE};
+
+        if (compactionsSize > 0) {
+            assert(compactionsSize == blasCount);
+            vk::QueryPoolCreateInfo poolCreateInfo = {
+                .queryType = vk::QueryType::eAccelerationStructureCompactedSizeKHR,
+                .queryCount = blasCount
+            };
+            if (m_vkContext.m_device.createQueryPool(&poolCreateInfo, nullptr, &queryPool) != vk::Result::eSuccess) {
+                throw std::runtime_error("failed to create a query pool!");
+            }
+        }
+
+        // batching creation/compaction of BLAS to allow staying in restricted amount of memory
+        std::vector<uint32_t> indices;
+        vk::DeviceSize batchSize = 0;
+        vk::DeviceSize batchLimit = 256'000'000;
+
+        for (uint32_t i = 0; i < blasCount; ++i) {
+            indices.push_back(i);
+            batchSize += buildAs[i].sizeInfo.accelerationStructureSize;
+
+            // over the limit or last BLAS element
+            if (batchSize >= batchLimit || i == blasCount - 1) {
+                // create a command buffer
+                vk::CommandBuffer commandBuffer = beginSingleTimeCommands(m_vkContext, m_commandPool);
+
+                // create BLAS
+                if (queryPool)
+                    m_vkContext.m_device.resetQueryPool(queryPool, 0, static_cast<uint32_t>(indices.size()));
+                uint32_t queryCount = 0;
+
+                for (const auto& j : indices) {
+                    vk::AccelerationStructureCreateInfoKHR createInfo {
+                        .size = buildAs[j].sizeInfo.accelerationStructureSize,
+                        .type = vk::AccelerationStructureTypeKHR::eBottomLevel
+                    };
+
+                    AccelerationStructure as;
+                    createAs(m_vkContext, createInfo, as);
+                    buildAs[j].as = as;
+                    buildAs[j].buildInfo.dstAccelerationStructure = buildAs[j].as.as;
+                    buildAs[j].buildInfo.scratchData.deviceAddress = scratchAddress;
+
+                    commandBuffer.buildAccelerationStructuresKHR(1, &buildAs[j].buildInfo, &buildAs[j].rangeInfo);
+
+                    vk::MemoryBarrier barrier {
+                        .srcAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR,
+                        .dstAccessMask = vk::AccessFlagBits::eAccelerationStructureReadKHR
+                    };
+
+                    commandBuffer.pipelineBarrier(
+                        vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // src
+                        vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR, // dst
+                        {}, 1, &barrier, 0, nullptr, 0, nullptr);
+
+                    if (queryPool) {
+                        // add a query to find real amount of memory needed, use for compaction
+                        commandBuffer.writeAccelerationStructuresPropertiesKHR(
+                            1, &buildAs[j].buildInfo.dstAccelerationStructure,
+                            vk::QueryType::eAccelerationStructureCompactedSizeKHR, queryPool, queryCount++);
+                    }
+                }
+
+                // submit and wait
+                endSingleTimeCommands(m_vkContext, m_commandPool, commandBuffer);
+
+                if (queryPool) {
+                    vk::CommandBuffer commandBuffer = beginSingleTimeCommands(m_vkContext, m_commandPool);
+
+                    // compact BLAS
+
+                    uint32_t queryCount = 0;
+                    std::vector<AccelerationStructure> cleanupAs; // previous AS to destroy
+
+                    // get the compacted size result back
+                    std::vector<vk::DeviceSize> compactSizes(static_cast<uint32_t>(indices.size()));
+                    if (m_vkContext.m_device.getQueryPoolResults(queryPool, 0, (uint32_t)compactSizes.size(), compactSizes.size() * sizeof(vk::DeviceSize), compactSizes.data(), sizeof(vk::DeviceSize), vk::QueryResultFlagBits::eWait) != vk::Result::eSuccess) {
+                        throw std::runtime_error("failed to get query pool results!");
+                    }
+
+                    for (auto idx : indices) {
+                        buildAs[idx].cleanupAs = buildAs[idx].as;
+                        buildAs[idx].sizeInfo.accelerationStructureSize = compactSizes[queryCount++];
+
+                        // create a compact version of the AS
+                        vk::AccelerationStructureCreateInfoKHR asCreateInfo {
+                            .size = buildAs[idx].sizeInfo.accelerationStructureSize,
+                            .type = vk::AccelerationStructureTypeKHR::eBottomLevel
+                        };
+                        createAs(m_vkContext, asCreateInfo, buildAs[idx].as);
+
+                        // copy the original BLAS to a compact version
+                        vk::CopyAccelerationStructureInfoKHR copyInfo {
+                          .src = buildAs[idx].buildInfo.dstAccelerationStructure,
+                          .dst = buildAs[idx].as.as,
+                          .mode = vk::CopyAccelerationStructureModeKHR::eCompact  
+                        };
+                        commandBuffer.copyAccelerationStructureKHR(&copyInfo);
+                    }
+                    
+                    // submit and wait
+                    endSingleTimeCommands(m_vkContext, m_commandPool, commandBuffer);
+
+                    // destroyNonCompacted
+                    for (auto& i : indices) {
+                        destroyAs(m_vkContext, buildAs[i].cleanupAs);
+                    }
+                }
+
+                batchSize = 0;
+                indices.clear();
+            }
+        }
+
+        for (auto& b : buildAs) {
+            m_blas.emplace_back(b.as);
+        }
+
+        m_vkContext.m_device.destroyQueryPool(queryPool, nullptr);
+        destroyBuffer(m_vkContext, scratchBuffer);
+    }
+
+    void createBlas() {
+        // BLAS stores each primitive in a geometry.
+        std::vector<BlasInput> allBlas;
+        allBlas.reserve(m_pScene->getObjects().size());
+
+        for (const auto& obj : m_pScene->getObjects()) {
+            auto blas = objectToVkGeometryKHR(obj);
+            allBlas.emplace_back(blas);
+        }
+
+        buildBlas(allBlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
     }
 
     void initVulkan() {

@@ -33,6 +33,12 @@ void VulkanContext::cleanup() {
 }
 
 void VulkanContext::createInstance() {
+    #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+        vk::DynamicLoader dl;
+        PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+    #endif
+
     if (kEnableValidationLayers && !checkValidationLayerSupport()) {
         throw std::runtime_error("validation layers requested, but not available!");
     }
@@ -75,6 +81,11 @@ void VulkanContext::createInstance() {
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
         vk::StructureChain<vk::InstanceCreateInfo, vk::ValidationFeaturesEXT, vk::DebugUtilsMessengerCreateInfoEXT> chain = {instanceCreateInfo, validationFeatures, debugCreateInfo};
         m_instance = vk::createInstance(chain.get<vk::InstanceCreateInfo>()), nullptr;
+
+
+        #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
+        #endif
         return;
     }
     else {
@@ -85,6 +96,11 @@ void VulkanContext::createInstance() {
         instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
         m_instance = vk::createInstance(instanceCreateInfo, nullptr);
+
+
+        #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
+        #endif
     }
 
     // "Vulkan is a platform agnostic API, which means that you need an extension
@@ -168,8 +184,15 @@ void VulkanContext::createLogicalDevice() {
         .samplerAnisotropy = VK_TRUE
     };
 
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{};
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{};
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature {
+        .accelerationStructure = VK_TRUE
+    };
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature {
+        .rayTracingPipeline = VK_TRUE
+    };
+    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT bufferAddressFeature {
+        .bufferDeviceAddress = VK_TRUE
+    };
 
     vk::DeviceCreateInfo createInfo { 
         // .pNext = &accelFeature,
@@ -182,7 +205,8 @@ void VulkanContext::createLogicalDevice() {
 
     vk::StructureChain<vk::DeviceCreateInfo, 
                     vk::PhysicalDeviceAccelerationStructureFeaturesKHR, 
-                    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR> chain = {createInfo, accelFeature, rtPipelineFeature};
+                    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+                    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT> chain = {createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature};
 
     if (kEnableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());
@@ -197,6 +221,10 @@ void VulkanContext::createLogicalDevice() {
     // if (m_physicalDevice.createDevice(&createInfo, nullptr, &m_device) != vk::Result::eSuccess) {
     //     throw std::runtime_error("failed to create logical device!");
     // }
+
+    #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);
+    #endif
 
     m_graphicsQueue = m_device.getQueue(indices.graphicsFamily.value(), 0);
     m_presentQueue = m_device.getQueue(indices.presentFamily.value(), 0);

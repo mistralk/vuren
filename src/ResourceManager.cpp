@@ -153,7 +153,7 @@ void ResourceManager::createVertexBuffer(const std::string& name, const std::vec
 
     vk::Buffer vertexBuffer;
     vk::DeviceMemory vertexBufferMemory;
-    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
 
     copyBuffer(*m_pContext, m_commandPool, stagingBuffer, vertexBuffer, bufferSize);
 
@@ -182,7 +182,7 @@ void ResourceManager::createIndexBuffer(const std::string& name, const std::vect
 
     vk::Buffer indexBuffer;
     vk::DeviceMemory indexBufferMemory;
-    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
 
     copyBuffer(*m_pContext, m_commandPool, stagingBuffer, indexBuffer, bufferSize);
 
@@ -462,6 +462,18 @@ void createSampler(const VulkanContext& context, Texture& texture) {
     }
 }
 
+Buffer createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties) {
+    vk::Buffer buffer;
+    vk::DeviceMemory memory;
+    createBuffer(context, size, usage, properties, buffer, memory);
+
+    Buffer bufferObject;
+    bufferObject.memory = memory;
+    bufferObject.descriptorInfo.buffer = buffer;
+
+    return bufferObject;
+}
+
 void createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& memory) {
     vk::BufferCreateInfo bufferInfo { 
         .size = size,
@@ -625,6 +637,20 @@ void transitionImageLayout(const VulkanContext& context, vk::CommandPool& comman
 
     // end single time commands
     endSingleTimeCommands(context, commandPool, commandBuffer);
+}
+
+void createAs(const VulkanContext& context, vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure& as) {
+    as.buffer = createBuffer(context, createInfo.size, vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    createInfo.buffer = as.buffer.descriptorInfo.buffer;
+    if (context.m_device.createAccelerationStructureKHR(&createInfo, nullptr, &as.as)  != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a acceleration structure!");
+    };
+}
+
+void destroyAs(const VulkanContext& context, AccelerationStructure& as) {
+    context.m_device.destroyBuffer(as.buffer.descriptorInfo.buffer, nullptr);
+    context.m_device.freeMemory(as.buffer.memory, nullptr);
+    context.m_device.destroyAccelerationStructureKHR(as.as);
 }
 
 } // namespace vrb

@@ -1,12 +1,14 @@
 #ifndef RESOURCE_MANAGER_HPP
 #define RESOURCE_MANAGER_HPP
 
+#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#define VULKAN_HPP_NO_CONSTRUCTORS
+#include <vulkan/vulkan.hpp>
+
 #include "VulkanContext.hpp"
 #include "Common.hpp"
 #include "Scene.hpp"
 
-#define VULKAN_HPP_NO_CONSTRUCTORS
-#include <vulkan/vulkan.hpp>
 
 
 namespace vrb {
@@ -20,6 +22,11 @@ struct Texture {
 struct Buffer {
     vk::DeviceMemory memory {VK_NULL_HANDLE};
     vk::DescriptorBufferInfo descriptorInfo {VK_NULL_HANDLE};
+};
+
+struct AccelerationStructure {
+    vk::AccelerationStructureKHR as;
+    Buffer buffer;
 };
 
 void destroyTexture(const VulkanContext& context, Texture& texture);
@@ -44,6 +51,8 @@ void createImageView(const VulkanContext& context, Texture& texture, vk::Format 
 
 void createSampler(const VulkanContext& context, Texture& texture);
 
+Buffer createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
+
 void createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& memory);
 
 void copyBuffer(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
@@ -51,6 +60,11 @@ void copyBuffer(const VulkanContext& context, vk::CommandPool& commandPool, vk::
 void copyBufferToImage(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
 
 void transitionImageLayout(const VulkanContext& context, vk::CommandPool& commandPool, Texture& texture, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+
+void createAs(const VulkanContext& context, vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure& as);
+
+void destroyAs(const VulkanContext& context, AccelerationStructure& as);
+
 
 class ResourceManager {
 public:
