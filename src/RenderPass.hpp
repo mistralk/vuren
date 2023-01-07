@@ -17,8 +17,8 @@ namespace vrb {
 
 class RasterizationPipeline {
 public:
-    RasterizationPipeline(VulkanContext* pContext, vk::RenderPass* pRenderPass, vk::DescriptorSetLayout* pDescriptorSetLayout, vk::PipelineLayout* pPipelineLayout, bool blitPass = false)
-     : m_pContext(pContext), m_pRenderPass(pRenderPass), m_pDescriptorSetLayout(pDescriptorSetLayout), m_pPipelineLayout(pPipelineLayout), m_blitPass(blitPass) {
+    RasterizationPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, vk::PipelineLayout pipelineLayout, bool blitPass = false)
+     : m_pContext(pContext), m_renderPass(renderPass), m_descriptorSetLayout(descriptorSetLayout), m_pipelineLayout(pipelineLayout), m_blitPass(blitPass) {
     }
 
     ~RasterizationPipeline() {
@@ -31,7 +31,7 @@ public:
     }
 
     void setup(const std::string& vertShaderPath, const std::string& fragShaderPath) {
-        if (!m_pContext->m_device || !m_pRenderPass || !m_pDescriptorSetLayout || !m_pPipelineLayout) {
+        if (!m_pContext->m_device || !m_renderPass || !m_descriptorSetLayout || !m_pipelineLayout) {
             throw std::runtime_error("pipeline setup failed!"
                 "logical device, render pass, descriptor set layout and pipeline layout must be valid before the pipeline creation.");
         }
@@ -192,8 +192,8 @@ public:
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &colorBlending,
             .pDynamicState = &dynamicState,
-            .layout = *m_pPipelineLayout,
-            .renderPass = *m_pRenderPass,
+            .layout = m_pipelineLayout,
+            .renderPass = m_renderPass,
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = -1
@@ -211,16 +211,16 @@ public:
         return m_pipeline;
     }
 
-    void setRenderPass(vk::RenderPass* pRenderPass) {
-        m_pRenderPass = pRenderPass;
+    void setRenderPass(vk::RenderPass renderPass) {
+        m_renderPass = renderPass;
     }
 
-    void setPipelineLayout(vk::PipelineLayout* pPipelineLayout) {
-        m_pPipelineLayout = pPipelineLayout;
+    void setPipelineLayout(vk::PipelineLayout pipelineLayout) {
+        m_pipelineLayout = pipelineLayout;
     }
 
-    void setDescriptorSetLayout(vk::DescriptorSetLayout* pDescriptorSetLayout) {
-        m_pDescriptorSetLayout = pDescriptorSetLayout;
+    void setDescriptorSetLayout(vk::DescriptorSetLayout descriptorSetLayout) {
+        m_descriptorSetLayout = descriptorSetLayout;
     }
 
     void setBlitPass(bool isBlitPass) {
@@ -249,9 +249,9 @@ private:
     vk::Pipeline m_pipeline;
 
     VulkanContext* m_pContext {nullptr};
-    vk::RenderPass* m_pRenderPass {nullptr};
-    vk::DescriptorSetLayout* m_pDescriptorSetLayout {nullptr};
-    vk::PipelineLayout* m_pPipelineLayout {nullptr};
+    vk::RenderPass m_renderPass {nullptr};
+    vk::DescriptorSetLayout m_descriptorSetLayout {nullptr};
+    vk::PipelineLayout m_pipelineLayout {nullptr};
     uint32_t m_colorAttachmentCount {0};
 
     bool m_blitPass;
@@ -282,7 +282,7 @@ public:
 
     RenderPass() {}
 
-    RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene);
+    RenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene);
     virtual ~RenderPass();
     
     virtual void setup() = 0;
@@ -308,7 +308,7 @@ protected:
     vk::DescriptorSet m_descriptorSet {VK_NULL_HANDLE};
 
     VulkanContext* m_pContext {nullptr};
-    vk::CommandPool* m_pCommandPool {nullptr};
+    vk::CommandPool m_commandPool {VK_NULL_HANDLE};
 
     vk::Extent2D m_extent;
 

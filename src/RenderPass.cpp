@@ -3,12 +3,12 @@
 
 namespace vrb {
 
-RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene)
+RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene)
     : m_pContext(pContext),
-      m_pCommandPool(pCommandPool),
+      m_commandPool(commandPool),
       m_pResourceManager(pResourceManager), 
       m_pScene(pScene),
-      m_rasterPipeline(pContext, &m_renderPass, &m_descriptorSetLayout, &m_pipelineLayout, false) {
+      m_rasterPipeline(pContext, m_renderPass, m_descriptorSetLayout, m_pipelineLayout, false) {
 }
 
 RenderPass::~RenderPass() {
@@ -248,9 +248,9 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
 }
 
 void RenderPass::createRasterPipeline(const std::string& vertShaderPath, const std::string& fragShaderPath, bool isBlitPass) {
-    m_rasterPipeline.setRenderPass(&m_renderPass);
-    m_rasterPipeline.setPipelineLayout(&m_pipelineLayout);
-    m_rasterPipeline.setDescriptorSetLayout(&m_descriptorSetLayout);
+    m_rasterPipeline.setRenderPass(m_renderPass);
+    m_rasterPipeline.setPipelineLayout(m_pipelineLayout);
+    m_rasterPipeline.setDescriptorSetLayout(m_descriptorSetLayout);
     m_rasterPipeline.setBlitPass(isBlitPass);
     m_rasterPipeline.setColorAttachmentCount(m_colorAttachmentCount);
     m_rasterPipeline.setup(vertShaderPath, fragShaderPath);

@@ -47,8 +47,8 @@ const uint32_t kInstanceCount = 10;
 
 class OffscreenRenderPass : public RenderPass {
 public:
-    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
-        : RenderPass(pContext, pCommandPool, pResourceManager, pScene) {
+    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
+        : RenderPass(pContext, commandPool, pResourceManager, pScene) {
     }
 
     ~OffscreenRenderPass() {
@@ -193,8 +193,8 @@ private:
 
 class FinalRenderPass : public RenderPass {
 public:
-    FinalRenderPass(VulkanContext* pContext, vk::CommandPool* pCommandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
-        : RenderPass(pContext, pCommandPool, pResourceManager, pScene) {
+    FinalRenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
+        : RenderPass(pContext, commandPool, pResourceManager, pScene) {
     }
 
     ~FinalRenderPass() {
@@ -550,8 +550,8 @@ private:
         m_swapChainColorImageViews = std::make_shared<std::vector<vk::ImageView>>();
 
         // to fix: strange copy construction
-        OffscreenRenderPass o(&m_vkContext, &m_commandPool, m_pResourceManager, m_pScene);
-        FinalRenderPass f(&m_vkContext, &m_commandPool, m_pResourceManager, m_pScene);
+        OffscreenRenderPass o(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        FinalRenderPass f(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
         offscreenRenderPass = o;
         finalRenderPass = f;
 
@@ -561,7 +561,7 @@ private:
         offscreenRenderPass.setExtent(m_swapChainExtent);
         finalRenderPass.setExtent(m_swapChainExtent);
         createCommandPool();
-        m_pResourceManager->setCommandPool(&m_commandPool);
+        m_pResourceManager->setCommandPool(m_commandPool);
 
         m_pResourceManager->createUniformBuffer("CameraBuffer");
         m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");

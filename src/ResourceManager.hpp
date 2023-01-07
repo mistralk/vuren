@@ -71,7 +71,7 @@ public:
     void destroyBuffers();
 
     void setExtent(vk::Extent2D extent);
-    void setCommandPool(vk::CommandPool* commandPool);
+    void setCommandPool(vk::CommandPool commandPool);
 
     Texture getTexture(const std::string& name);
     Buffer getBuffer(const std::string& name);
@@ -91,7 +91,7 @@ private:
     std::unordered_map<std::string, void*> m_uniformBufferMappedDict;
 
     VulkanContext* m_pContext {nullptr};
-    vk::CommandPool* m_pCommandPool {nullptr};
+    vk::CommandPool m_commandPool {VK_NULL_HANDLE};
     vk::Extent2D m_extent;
 
 }; // class ResourceManager

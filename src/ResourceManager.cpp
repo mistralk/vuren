@@ -44,7 +44,7 @@ void ResourceManager::createTextureRGBA32Sfloat(const std::string& name) {
         vk::MemoryPropertyFlagBits::eDeviceLocal);
     createImageView(*m_pContext, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
     createSampler(*m_pContext, texture);
-    // transitionImageLayout(*m_pContext, *m_pCommandPool, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
+    // transitionImageLayout(*m_pContext, m_commandPool, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 
     if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
         throw std::runtime_error("same key already exists in texture dictionary!");
@@ -57,7 +57,7 @@ void ResourceManager::createDepthTexture(const std::string& name) {
     vk::Format depthFormat = findDepthFormat(*m_pContext);
     createImage(*m_pContext, depthTexture, m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
     createImageView(*m_pContext, depthTexture, depthFormat, vk::ImageAspectFlagBits::eDepth);
-    // transitionImageLayout(*m_pContext, *m_pCommandPool, texture, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    // transitionImageLayout(*m_pContext, m_commandPool, texture, depthFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
         throw std::runtime_error("same depth key already exists in texture dictionary!");
@@ -92,14 +92,14 @@ void ResourceManager::createModelTexture(const std::string& name, const std::str
     // Transition the texture image to ImageLayout::eTransferDstOptimal
     // The image was create with the ImageLayout::eUndefined layout
     // Because we don't care about its contents before performing the copy operation
-    transitionImageLayout(*m_pContext, *m_pCommandPool, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+    transitionImageLayout(*m_pContext, m_commandPool, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
     // Execute the staging buffer to image copy operation
-    copyBufferToImage(*m_pContext, *m_pCommandPool, stagingBuffer, modelTexture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    copyBufferToImage(*m_pContext, m_commandPool, stagingBuffer, modelTexture.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
     
     // To be able to start sampling from the texture image in the shader,
     // need one last transition to prepare it for shader access
-    transitionImageLayout(*m_pContext, *m_pCommandPool, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+    transitionImageLayout(*m_pContext, m_commandPool, modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 
     m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
     m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
@@ -155,7 +155,7 @@ void ResourceManager::createVertexBuffer(const std::string& name, const std::vec
     vk::DeviceMemory vertexBufferMemory;
     createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
 
-    copyBuffer(*m_pContext, *m_pCommandPool, stagingBuffer, vertexBuffer, bufferSize);
+    copyBuffer(*m_pContext, m_commandPool, stagingBuffer, vertexBuffer, bufferSize);
 
     m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
     m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
@@ -184,7 +184,7 @@ void ResourceManager::createIndexBuffer(const std::string& name, const std::vect
     vk::DeviceMemory indexBufferMemory;
     createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
 
-    copyBuffer(*m_pContext, *m_pCommandPool, stagingBuffer, indexBuffer, bufferSize);
+    copyBuffer(*m_pContext, m_commandPool, stagingBuffer, indexBuffer, bufferSize);
 
     m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
     m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
@@ -232,8 +232,8 @@ void ResourceManager::setExtent(vk::Extent2D extent) {
     m_extent = extent;
 }
 
-void ResourceManager::setCommandPool(vk::CommandPool* commandPool) {
-    m_pCommandPool = commandPool;
+void ResourceManager::setCommandPool(vk::CommandPool commandPool) {
+    m_commandPool = commandPool;
 }
 
 SceneObject ResourceManager::loadObjModel(const std::string& name, const std::string& filename) {
