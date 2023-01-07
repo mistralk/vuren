@@ -57,16 +57,30 @@ public:
         vk::PipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
         
         // Fixed function: Vertex input
-        auto bindingDescription = Vertex::getBindingDescription();
-        auto attributeDescription = Vertex::getAttributeDescriptions();
-    
-        auto instanceBindingDescription = ObjectInstance::getBindingDescription();
+        // per-vertex data
+        auto vertexAttributeDescription = Vertex::getAttributeDescriptions();
+        
+        // per-instance data
         auto instanceAttributeDescription = ObjectInstance::getAttributeDescriptions();
+
+        std::vector<vk::VertexInputBindingDescription> bindingDescriptions = {
+            {0, sizeof(Vertex), vk::VertexInputRate::eVertex}, 
+            {1, sizeof(ObjectInstance), vk::VertexInputRate::eInstance}
+        };
+
+        for (uint32_t i = 0; i < vertexAttributeDescription.size(); ++i)
+            vertexAttributeDescription[i].binding = 0;
+
+        for (uint32_t i = 0; i < instanceAttributeDescription.size(); ++i)
+            instanceAttributeDescription[i].binding = 1;
+        
+        // merge all vertex input data
         std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
-        attributeDescriptions.insert(attributeDescriptions.end(), attributeDescription.begin(), attributeDescription.end());
+        attributeDescriptions.insert(attributeDescriptions.end(), vertexAttributeDescription.begin(), vertexAttributeDescription.end());
         attributeDescriptions.insert(attributeDescriptions.end(), instanceAttributeDescription.begin(), instanceAttributeDescription.end());
         
-        std::vector<vk::VertexInputBindingDescription> bindingDescriptions = {bindingDescription, instanceBindingDescription};
+        for (uint32_t i = 0; i < attributeDescriptions.size(); ++i)
+            attributeDescriptions[i].location = i;
 
         vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
         if (m_blitPass) {

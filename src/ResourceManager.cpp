@@ -197,7 +197,7 @@ void ResourceManager::createIndexBuffer(const std::string& name, const std::vect
 
 void ResourceManager::createUniformBuffer(const std::string& name) {
     Buffer buffer;
-    vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+    vk::DeviceSize bufferSize = sizeof(Camera);
 
     vk::Buffer uniformBuffer;
     vk::DeviceMemory uniformBufferMemory;

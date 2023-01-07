@@ -222,7 +222,7 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
             case vk::DescriptorType::eUniformBuffer:
                 tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
                 tempBufferInfos[i].offset = 0;
-                tempBufferInfos[i].range = sizeof(UniformBufferObject);
+                tempBufferInfos[i].range = sizeof(Camera);
                 pBufferInfo = &tempBufferInfos[i];
                 break;
 

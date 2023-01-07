@@ -31,7 +31,7 @@ void main() {
 	// 현재 3행의 모든 원소들이 기대대로 (0,0,0,1)이 아니라 (1,1,1,1)이 들어가고 있다
 
 	// OpenGL uses post-multiplication (vector-on-the-right) with column-major matrix memory layout.
-	gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos.xyz, 1.0);
+	gl_Position = ubo.proj * ubo.view * ubo.model * pos;
 
 	outColor = inNormal;
     outTexCoord = inTexCoord;

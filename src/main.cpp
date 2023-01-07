@@ -43,7 +43,7 @@ std::vector<std::string> kOffscreenOutputTextureNames;
 int kCurrentItem = 0;
 bool kDirty = false;
 
-const uint32_t kInstanceCount = 100;
+const uint32_t kInstanceCount = 50;
 
 class OffscreenRenderPass : public RenderPass {
 public:
@@ -355,7 +355,7 @@ public:
                 case vk::DescriptorType::eUniformBuffer:
                     bufferInfo.buffer = m_pResourceManager->getBuffer(bindings[i].name).descriptorInfo.buffer;
                     bufferInfo.offset = 0;
-                    bufferInfo.range = sizeof(UniformBufferObject);
+                    bufferInfo.range = sizeof(Camera);
                     pBufferInfo = &bufferInfo;
                     break;
 
@@ -629,12 +629,9 @@ private:
             auto pos = glm::translate(glm::identity<glm::mat4>(), glm::vec3(uniformDistPos(rng), uniformDistPos(rng), uniformDistPos(rng)));
             auto scale = glm::scale(glm::identity<glm::mat4>(), glm::vec3(0.5f, 0.5f, 0.5f));
             auto rot = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            instance.transform = pos * rot * scale;
-
+            
             // glsl and glm: uses column-major order matrices of column vectors
-            for(int y = 0; y < 4; ++y)
-                printf("column %d: %f %f %f %f\n", y, instance.transform[y][0], instance.transform[y][1], instance.transform[y][2], instance.transform[y][3]);
-            printf("\n");
+            instance.world = pos * rot * scale;
             
             instance.objectId = static_cast<uint32_t>(m_pScene->getObjects().size());
             
@@ -878,6 +875,7 @@ private:
             result = m_vkContext.m_device.waitForFences(1, &m_inFlightFence, VK_TRUE, UINT64_MAX);
         } while (result == vk::Result::eTimeout);
 
+        // change the descriptor sets w.r.t. updated gui (e.g., output buffer)
         if (kDirty) {
             finalRenderPass.updateDescriptorSets();
             kDirty = false;
@@ -982,7 +980,7 @@ private:
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        UniformBufferObject ubo{};
+        Camera ubo{};
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 10.0f);

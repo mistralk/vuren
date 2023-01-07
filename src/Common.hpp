@@ -24,29 +24,22 @@ struct Vertex {
     glm::vec3 normal;
     glm::vec2 texCoord;
 
-    static vk::VertexInputBindingDescription getBindingDescription() {
-        vk::VertexInputBindingDescription bindingDescription{ 
-            .binding = 0,
-            .stride = sizeof(Vertex),
-            .inputRate = vk::VertexInputRate::eVertex
-        };
-
-        return bindingDescription;
-    }
-
     static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions() {
         std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions{};
 
+        // position
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
         attributeDescriptions[0].format = vk::Format::eR32G32B32Sfloat;
         attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
+        // normal
         attributeDescriptions[1].binding = 0;
         attributeDescriptions[1].location = 1;
         attributeDescriptions[1].format = vk::Format::eR32G32B32Sfloat;
         attributeDescriptions[1].offset = offsetof(Vertex, normal);
 
+        // uv coordinate
         attributeDescriptions[2].binding = 0;
         attributeDescriptions[2].location = 2;
         attributeDescriptions[2].format = vk::Format::eR32G32Sfloat;
@@ -60,7 +53,7 @@ struct Vertex {
     }
 };
 
-struct UniformBufferObject {
+struct Camera {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
@@ -74,42 +67,21 @@ struct SceneObject {
 };
 
 struct ObjectInstance {
-    glm::mat4x4 transform;
+    glm::mat4x4 world;
+    // glm::mat4x4 invTransposeWorld;
     uint32_t objectId;
-
-    static vk::VertexInputBindingDescription getBindingDescription() {
-        vk::VertexInputBindingDescription bindingDescription{ 
-            .binding = 1,
-            .stride = sizeof(ObjectInstance),
-            .inputRate = vk::VertexInputRate::eInstance
-        };
-
-        return bindingDescription;
-    }
 
     static std::array<vk::VertexInputAttributeDescription, 5> getAttributeDescriptions() {
         std::array<vk::VertexInputAttributeDescription, 5> attributeDescriptions{};
-        attributeDescriptions[0].binding = 1;
-        attributeDescriptions[0].location = 3;
-        attributeDescriptions[0].format = vk::Format::eR32G32B32Sfloat;
-        attributeDescriptions[0].offset = 0;
+        // world matrix 4x4
+        for (uint32_t i = 0; i < 4; ++i) {
+            attributeDescriptions[i].format = vk::Format::eR32G32B32A32Sfloat;
+            attributeDescriptions[i].offset = i * 4 * sizeof(float);
+        }
 
-        attributeDescriptions[1].binding = 1;
-        attributeDescriptions[1].location = 4;
-        attributeDescriptions[1].format = vk::Format::eR32G32B32Sfloat;
-        attributeDescriptions[1].offset = 4 * sizeof(float);
+        // transpose of inverse of world matrix 4x4
 
-        attributeDescriptions[2].binding = 1;
-        attributeDescriptions[2].location = 5;
-        attributeDescriptions[2].format = vk::Format::eR32G32B32Sfloat;
-        attributeDescriptions[2].offset = 8 * sizeof(float);
-
-        attributeDescriptions[3].binding = 1;
-        attributeDescriptions[3].location = 6;
-        attributeDescriptions[3].format = vk::Format::eR32G32B32Sfloat;
-        attributeDescriptions[3].offset = 12 * sizeof(float);
-
-        attributeDescriptions[4].binding = 1;
+        // object id 
         attributeDescriptions[4].location = 7;
         attributeDescriptions[4].format = vk::Format::eR32Sint;
         attributeDescriptions[4].offset = 16 * sizeof(float); // offsetof(ObjectInstance, objectId);
