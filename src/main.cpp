@@ -445,6 +445,7 @@ public:
         initVulkan();
         initRayTracing();
         createBlas();
+        createTlas();
         initImGui();
         mainLoop();
         cleanup();
@@ -793,6 +794,117 @@ private:
         buildBlas(allBlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
     }
 
+    void buildTlas(const std::vector<vk::AccelerationStructureInstanceKHR>& instances, vk::BuildAccelerationStructureFlagsKHR flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace, bool update = false) {
+        assert(m_tlas.as == vk::AccelerationStructureKHR{VK_NULL_HANDLE} || update);
+        uint32_t instanceCount = static_cast<uint32_t>(instances.size());
+
+        vk::CommandBuffer commandBuffer = beginSingleTimeCommands(m_vkContext, m_commandPool);;
+
+        // caution: this is not the managed "InstanceBuffer"
+        Buffer instanceBuffer = createBuffer(m_vkContext, instanceCount * sizeof(vk::AccelerationStructureInstanceKHR), vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        vk::BufferDeviceAddressInfo addressInfo = { .buffer = instanceBuffer.descriptorInfo.buffer };
+        vk::DeviceAddress instanceBufferAddress = m_vkContext.m_device.getBufferAddress(&addressInfo);
+
+        // make sure the copy of the instance buffer are copied before triggering the acceleration structure build
+        vk::MemoryBarrier barrier {
+            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+            .dstAccessMask = vk::AccessFlagBits::eAccelerationStructureWriteKHR
+        };
+        commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR,
+            {}, 1, &barrier, 0, nullptr, 0, nullptr);
+
+        // create the TLAS
+        vk::AccelerationStructureGeometryInstancesDataKHR instanceData;
+        instanceData.data.deviceAddress = instanceBufferAddress;
+
+        vk::AccelerationStructureGeometryKHR tlasGeometry;
+        tlasGeometry.geometryType = vk::GeometryTypeKHR::eInstances;
+        tlasGeometry.geometry.instances = instanceData;
+
+        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo {
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel,
+            .flags = flags,
+            .mode = update ? vk::BuildAccelerationStructureModeKHR::eUpdate : vk::BuildAccelerationStructureModeKHR::eBuild,
+            .srcAccelerationStructure = VK_NULL_HANDLE,
+            .geometryCount = 1,
+            .pGeometries = &tlasGeometry
+        };
+
+        vk::AccelerationStructureBuildSizesInfoKHR sizeInfo{};
+        m_vkContext.m_device.getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, &buildInfo, &instanceCount, &sizeInfo);
+
+        vk::AccelerationStructureCreateInfoKHR createInfo {
+            .size = sizeInfo.accelerationStructureSize,
+            .type = vk::AccelerationStructureTypeKHR::eTopLevel
+        };
+
+        // create TLAS
+        createAs(m_vkContext, createInfo, m_tlas);
+
+        // allocate the scratch memory
+        Buffer scratchBuffer = createBuffer(m_vkContext, sizeInfo.buildScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        vk::BufferDeviceAddressInfo scratchBufferAddressInfo = { .buffer = scratchBuffer.descriptorInfo.buffer };
+        vk::DeviceAddress scratchAddress = m_vkContext.m_device.getBufferAddress(scratchBufferAddressInfo);
+
+        // update build information
+        buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+        buildInfo.dstAccelerationStructure = m_tlas.as;
+        buildInfo.scratchData.deviceAddress = scratchAddress;
+
+        // build offsets info: n instances
+        vk::AccelerationStructureBuildRangeInfoKHR offsetInfo {
+            .primitiveCount = instanceCount,
+            .primitiveOffset = 0,
+            .firstVertex = 0,
+            .transformOffset = 0
+        };
+
+        const vk::AccelerationStructureBuildRangeInfoKHR* pOffsetInfo = &offsetInfo;
+
+        // build the TLAS
+        commandBuffer.buildAccelerationStructuresKHR(1, &buildInfo, &pOffsetInfo);
+
+        endSingleTimeCommands(m_vkContext, m_commandPool, commandBuffer);
+        destroyBuffer(m_vkContext, scratchBuffer);
+        destroyBuffer(m_vkContext, instanceBuffer);
+    }
+
+    void createTlas() {
+        // TLAS is the entry point in the rt scene description
+        std::vector<vk::AccelerationStructureInstanceKHR> tlas;
+        tlas.reserve(m_instances.size());
+        
+        for (const ObjectInstance& instance : m_instances) {
+            // glm: column-major matrix
+            vk::TransformMatrixKHR transform = {
+                .matrix = { {
+                    instance.world[0].x, instance.world[1].x, instance.world[2].x, instance.world[3].x,
+                    instance.world[1].y, instance.world[1].y, instance.world[2].y, instance.world[3].y,
+                    instance.world[0].z, instance.world[1].z, instance.world[2].z, instance.world[3].z
+                } }
+            };
+
+            vk::DeviceAddress blasAddress;
+            vk::AccelerationStructureDeviceAddressInfoKHR addressInfo = {
+                .accelerationStructure = m_blas[instance.objectId].as
+            };
+            blasAddress = m_vkContext.m_device.getAccelerationStructureAddressKHR(addressInfo);
+            
+            vk::AccelerationStructureInstanceKHR rayInstance {
+                .transform = transform, // row-major matrix
+                .instanceCustomIndex = instance.objectId,
+                .mask = 0xFF,
+                .instanceShaderBindingTableRecordOffset = 0,
+                .flags = static_cast<uint8_t>(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable),
+                .accelerationStructureReference = blasAddress
+            };
+
+            tlas.emplace_back(rayInstance);
+        }
+
+        buildTlas(tlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
+    }
+
     void initVulkan() {
         m_vkContext.init("test", m_pWindow);
 
@@ -887,7 +999,7 @@ private:
             // glsl and glm: uses column-major order matrices of column vectors
             instance.world = pos * rot * scale;
             instance.invTransposeWorld = glm::transpose(glm::inverse(instance.world));
-            instance.objectId = static_cast<uint32_t>(m_pScene->getObjects().size());
+            instance.objectId = 0;
             
             m_instances.push_back(instance);
         }
@@ -911,7 +1023,7 @@ private:
         // instance buffer
         vk::Buffer instanceBuffer;
         vk::DeviceMemory instanceBufferMemory;
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, instanceBuffer, instanceBufferMemory);
+        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, instanceBuffer, instanceBufferMemory);
 
         // copy to staging buffer
         copyBuffer(m_vkContext, m_commandPool, stagingBuffer, instanceBuffer, bufferSize);

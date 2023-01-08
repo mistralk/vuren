@@ -351,9 +351,11 @@ uint32_t findMemoryType(const VulkanContext& context, uint32_t typeFilter, vk::M
 }
 
 vk::CommandBuffer beginSingleTimeCommands(const VulkanContext& context, vk::CommandPool& commandPool) {
-    vk::CommandBufferAllocateInfo allocInfo { .commandPool = commandPool,
-                                                .level = vk::CommandBufferLevel::ePrimary,
-                                                .commandBufferCount = 1 };
+    vk::CommandBufferAllocateInfo allocInfo { 
+        .commandPool = commandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
 
     vk::CommandBuffer commandBuffer;
     if (context.m_device.allocateCommandBuffers(&allocInfo, &commandBuffer) != vk::Result::eSuccess) {
@@ -371,8 +373,10 @@ vk::CommandBuffer beginSingleTimeCommands(const VulkanContext& context, vk::Comm
 void endSingleTimeCommands(const VulkanContext& context, vk::CommandPool& commandPool, vk::CommandBuffer commandBuffer) {
     commandBuffer.end();
 
-    vk::SubmitInfo submitInfo { .commandBufferCount = 1,
-                                .pCommandBuffers = &commandBuffer };
+    vk::SubmitInfo submitInfo { 
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBuffer
+    };
 
     if (context.m_graphicsQueue.submit(1, &submitInfo, VK_NULL_HANDLE) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to submit command buffer to graphics queue!");
