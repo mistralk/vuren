@@ -3,17 +3,6 @@
 
 namespace vrb {
 
-RenderPass::RenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene)
-    : m_pContext(pContext),
-      m_commandPool(commandPool),
-      m_pResourceManager(pResourceManager), 
-      m_pScene(pScene),
-      m_rasterPipeline(pContext, m_renderPass, m_descriptorSetLayout, m_pipelineLayout, false) {
-}
-
-RenderPass::~RenderPass() {
-}
-
 void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo) {
     if (m_renderPass) {
         return;
@@ -108,7 +97,7 @@ void RenderPass::cleanup() {
     m_pContext->m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
     m_pContext->m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
     m_pContext->m_device.destroyPipelineLayout(m_pipelineLayout, nullptr);
-    m_rasterPipeline.cleanup();
+    m_pPipeline->cleanup();
 }
 
 void RenderPass::createFramebuffer(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo) {
@@ -131,7 +120,7 @@ void RenderPass::createFramebuffer(const std::vector<AttachmentInfo>& colorAttac
         throw std::runtime_error("failed to create framebuffer!");
     }
 
-    m_colorAttachmentCount = static_cast<uint32_t>(colorAttachmentInfos.size());
+    m_rasterProperties.colorAttachmentCount = static_cast<uint32_t>(colorAttachmentInfos.size());
 }
 
 void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bindingInfos) {
@@ -211,23 +200,46 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
         vk::DescriptorBufferInfo* pBufferInfo = nullptr;
         vk::DescriptorImageInfo* pImageInfo = nullptr;
 
-        switch (bindings[i].descriptorType) {
-            case vk::DescriptorType::eCombinedImageSampler:
-                tempImageInfos[i].sampler = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.sampler;
-                tempImageInfos[i].imageView = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.imageView;
-                tempImageInfos[i].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                pImageInfo = &tempImageInfos[i];
-                break;
-            
-            case vk::DescriptorType::eUniformBuffer:
-                tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
-                tempBufferInfos[i].offset = 0;
-                tempBufferInfos[i].range = sizeof(Camera);
-                pBufferInfo = &tempBufferInfos[i];
-                break;
+        if (bindings[i].descriptorType == vk::DescriptorType::eAccelerationStructureKHR) {
+            vk::AccelerationStructureKHR tlas = m_rayTracingProperties.tlas.as;
+            vk::WriteDescriptorSetAccelerationStructureKHR descriptorSetAsInfo {
+                .accelerationStructureCount = 1,
+                .pAccelerationStructures = &tlas
+            };
+        }
+        else {
+            switch (bindings[i].descriptorType) {
+                case vk::DescriptorType::eCombinedImageSampler:
+                    tempImageInfos[i].sampler = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.sampler;
+                    tempImageInfos[i].imageView = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.imageView;
+                    tempImageInfos[i].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    pImageInfo = &tempImageInfos[i];
+                    break;
+                
+                case vk::DescriptorType::eUniformBuffer:
+                    tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
+                    tempBufferInfos[i].offset = 0;
+                    tempBufferInfos[i].range = sizeof(Camera);
+                    pBufferInfo = &tempBufferInfos[i];
+                    break;
 
-            default:
-                throw std::runtime_error("unsupported descriptor type!"); 
+                case vk::DescriptorType::eStorageBuffer:
+                    tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
+                    tempBufferInfos[i].offset = 0;
+                    tempBufferInfos[i].range = VK_WHOLE_SIZE;
+                    pBufferInfo = &tempBufferInfos[i];
+                    break;
+                
+                case vk::DescriptorType::eStorageImage:
+                    tempImageInfos[i].sampler = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.sampler;
+                    tempImageInfos[i].imageView = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.imageView;
+                    tempImageInfos[i].imageLayout = vk::ImageLayout::eGeneral;
+                    pImageInfo = &tempImageInfos[i];
+                    break;
+
+                default:
+                    throw std::runtime_error("unsupported descriptor type!"); 
+            }
         }
 
         vk::WriteDescriptorSet bufferWrite = { 
@@ -247,13 +259,28 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
     m_pContext->m_device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
-void RenderPass::createRasterPipeline(const std::string& vertShaderPath, const std::string& fragShaderPath, bool isBlitPass) {
-    m_rasterPipeline.setRenderPass(m_renderPass);
-    m_rasterPipeline.setPipelineLayout(m_pipelineLayout);
-    m_rasterPipeline.setDescriptorSetLayout(m_descriptorSetLayout);
-    m_rasterPipeline.setBlitPass(isBlitPass);
-    m_rasterPipeline.setColorAttachmentCount(m_colorAttachmentCount);
-    m_rasterPipeline.setup(vertShaderPath, fragShaderPath);
+void RenderPass::setupRasterPipeline(const std::string& vertShaderPath, const std::string& fragShaderPath, bool isBlitPass) {
+    assert(m_pipelineType == PipelineType::eRasterization);
+
+    m_rasterProperties.vertShaderPath = vertShaderPath;
+    m_rasterProperties.fragShaderPath = fragShaderPath;
+    m_rasterProperties.isBiltPass = isBlitPass;
+
+    m_pPipeline = std::make_unique<RasterizationPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_pipelineLayout, m_rasterProperties);
+
+    m_pPipeline->setup();
+}
+
+void RenderPass::setupRayTracingPipeline(const std::string& raygenShaderPath, const std::string& missShaderPath, const std::string& closestHitShaderPath, const std::vector<AccelerationStructure>& blas, AccelerationStructure tlas) {
+    assert(m_pipelineType == PipelineType::eRayTracing);
+
+    m_rayTracingProperties.raygenShaderPath = raygenShaderPath;
+    m_rayTracingProperties.missShaderPath = missShaderPath;
+    m_rayTracingProperties.closestHitShaderPath = closestHitShaderPath;
+
+    // m_pPipeline = std::make_unique<RayTracingPipeline>(m_renderPass, m_pipelineLayout, m_descriptorSetLayout, m_rayTracingProperties);
+
+    m_pPipeline->setup();
 }
 
 }; // namespace vrb

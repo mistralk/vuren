@@ -50,17 +50,63 @@ bool kDirty = false;
 
 const uint32_t kInstanceCount = 10;
 
+// class RayTracingRenderPass : public RenderPass {
+// public:
+//     RayTracingRenderPass()
+//         : RenderPass(PipelineType::eRayTracing)
+//     }
+
+//     ~RayTracingRenderPass() {
+//     }
+
+//     RayTracingRenderPass() {}
+
+//     void init(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
+//         m_pContext = pContext;
+//         m_commandPool = commandPool;
+//         m_pResourceManager = pResourceManager; 
+//         m_pScene = pScene;
+//     }
+
+//     void setup() {
+//         m_pResourceManager->createTextureRGBA32Sfloat("RtColor");
+
+//         kOffscreenOutputTextureNames.push_back("RtColor");
+
+//         // create a descriptor set
+//         std::vector<ResourceBindingInfo> bindings = {
+//             {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eRaygenKHR},
+//             {"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR},
+//             {"Room_vertexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR},
+//             {"Room_indexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR},
+//             {"RtColor", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR}, // for ray tracing, writing to output image will be manually called by shader
+//             {"Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR} // name doesn't matter for AS
+//         };
+//         createDescriptorSet(bindings);
+//     }
+
+//     void record(vk::CommandBuffer commandBuffer) {
+//     }
+
+// private:
+// };
+
 class OffscreenRenderPass : public RenderPass {
 public:
-    OffscreenRenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
-        : RenderPass(pContext, commandPool, pResourceManager, pScene) {
+    OffscreenRenderPass()
+        : RenderPass(PipelineType::eRasterization)
+    {
     }
 
     ~OffscreenRenderPass() {
-
     }
 
-    OffscreenRenderPass() {}
+    void init(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
+        m_pContext = pContext;
+        m_commandPool = commandPool;
+        m_pResourceManager = pResourceManager; 
+        m_pScene = pScene;
+    }
 
     void setup() {
         // create textures for the attachments
@@ -131,7 +177,7 @@ public:
         createFramebuffer(colorAttachments, depthStencilAttachment);
 
         // create a graphics pipeline for this render pass
-        createRasterPipeline("shaders/shader.vert.spv", "shaders/shader.frag.spv");
+        setupRasterPipeline("shaders/shader.vert.spv", "shaders/shader.frag.spv");
     }
 
     void record(vk::CommandBuffer commandBuffer) {
@@ -153,7 +199,7 @@ public:
         
         commandBuffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_rasterPipeline.getPipeline());
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_pPipeline->getPipeline());
 
         vk::Viewport viewport { 
             .x = 0.0f,
@@ -198,15 +244,20 @@ private:
 
 class FinalRenderPass : public RenderPass {
 public:
-    FinalRenderPass(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) 
-        : RenderPass(pContext, commandPool, pResourceManager, pScene) {
+    FinalRenderPass()
+        : RenderPass(PipelineType::eRasterization)
+    {
     }
 
     ~FinalRenderPass() {
-
     }
 
-    FinalRenderPass(){}
+    void init(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
+        m_pContext = pContext;
+        m_commandPool = commandPool;
+        m_pResourceManager = pResourceManager; 
+        m_pScene = pScene;
+    }
 
     void setSwapChainImagePointers(std::shared_ptr<std::vector<vk::Framebuffer>> swapChainFramebuffers, std::shared_ptr<std::vector<vk::Image>> swapChainColorImages, std::shared_ptr<std::vector<vk::ImageView>> swapChainColorImageViews) {
         m_swapChainFramebuffers = swapChainFramebuffers;
@@ -254,7 +305,7 @@ public:
         createSwapChainFrameBuffers(m_pResourceManager->getTexture("FinalDepth"));
 
         // create a graphics pipeline for this render pass
-        createRasterPipeline("shaders/final.vert.spv", "shaders/final.frag.spv", true);
+        setupRasterPipeline("shaders/final.vert.spv", "shaders/final.frag.spv", true);
     }
 
     void record(vk::CommandBuffer commandBuffer) {
@@ -274,7 +325,7 @@ public:
         
         commandBuffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_rasterPipeline.getPipeline());
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_pPipeline->getPipeline());
 
         vk::Viewport viewport { 
             .x = 0.0f,
@@ -332,9 +383,10 @@ public:
             }
         }
 
-        m_colorAttachmentCount = 1;
+        m_rasterProperties.colorAttachmentCount = 1;
     }
 
+    // required when changing resolution
     void updateDescriptorSets() {
         std::vector<ResourceBindingInfo> bindings = {
             {kOffscreenOutputTextureNames[kCurrentItem], vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
@@ -425,15 +477,33 @@ private:
     std::vector<ObjectInstance> m_instances;
 
     // for the offscreen pass
-    OffscreenRenderPass offscreenRenderPass;
+    OffscreenRenderPass m_offscreenRenderPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
-    FinalRenderPass finalRenderPass;
+    FinalRenderPass m_finalRenderPass;
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
 
     // ray tracing
+    // RayTracingRenderPass m_rtRenderPass;
     vk::PhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProperties;
+    std::vector<AccelerationStructure> m_blas;
+    AccelerationStructure m_tlas;
+
+    struct BlasInput {
+        std::vector<vk::AccelerationStructureGeometryKHR> asGeometry;
+        std::vector<vk::AccelerationStructureBuildRangeInfoKHR> asBuildOffsetInfo;
+        vk::BuildAccelerationStructureFlagsKHR flags {0};
+    };
+    
+    struct BuildAccelerationStructure {
+        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo;
+        vk::AccelerationStructureBuildSizesInfoKHR sizeInfo;
+        const vk::AccelerationStructureBuildRangeInfoKHR* rangeInfo;
+
+        AccelerationStructure as;
+        AccelerationStructure cleanupAs;
+    };
 
 public:
     Application() {
@@ -494,7 +564,7 @@ private:
             .MSAASamples = VK_SAMPLE_COUNT_1_BIT
         };
         
-        ImGui_ImplVulkan_Init(&initInfo, finalRenderPass.getRenderPass());
+        ImGui_ImplVulkan_Init(&initInfo, m_finalRenderPass.getRenderPass());
 
         ImGui::StyleColorsClassic();
 
@@ -557,12 +627,6 @@ private:
         m_vkContext.m_physicalDevice.getProperties2(&prop2);
     }
 
-    struct BlasInput {
-        std::vector<vk::AccelerationStructureGeometryKHR> asGeometry;
-        std::vector<vk::AccelerationStructureBuildRangeInfoKHR> asBuildOffsetInfo;
-        vk::BuildAccelerationStructureFlagsKHR flags {0};
-    };
-
     BlasInput objectToVkGeometryKHR(const SceneObject& object) {
         vk::BufferDeviceAddressInfo vertexBufferAddressInfo = { .buffer = object.vertexBuffer->descriptorInfo.buffer };
         vk::BufferDeviceAddressInfo indexBufferAddressInfo = { .buffer = object.indexBuffer->descriptorInfo.buffer };
@@ -606,17 +670,6 @@ private:
 
         return input;
     }
-
-    struct BuildAccelerationStructure {
-        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo;
-        vk::AccelerationStructureBuildSizesInfoKHR sizeInfo;
-        const vk::AccelerationStructureBuildRangeInfoKHR* rangeInfo;
-
-        AccelerationStructure as;
-        AccelerationStructure cleanupAs;
-    };
-    std::vector<AccelerationStructure> m_blas;
-    AccelerationStructure m_tlas;
 
     // generate one BLAS for each BlasInput
     void buildBlas(const std::vector<BlasInput>& input, vk::BuildAccelerationStructureFlagsKHR flags) {
@@ -915,17 +968,14 @@ private:
         m_swapChainColorImages = std::make_shared<std::vector<vk::Image>>();
         m_swapChainColorImageViews = std::make_shared<std::vector<vk::ImageView>>();
 
-        // to fix: strange copy construction
-        OffscreenRenderPass o(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        FinalRenderPass f(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        offscreenRenderPass = o;
-        finalRenderPass = f;
+        m_offscreenRenderPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        m_finalRenderPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
 
         createSwapChain();
         createSwapChainImageViews();
         m_pResourceManager->setExtent(m_swapChainExtent);
-        offscreenRenderPass.setExtent(m_swapChainExtent);
-        finalRenderPass.setExtent(m_swapChainExtent);
+        m_offscreenRenderPass.setExtent(m_swapChainExtent);
+        m_finalRenderPass.setExtent(m_swapChainExtent);
         createCommandPool();
         m_pResourceManager->setCommandPool(m_commandPool);
 
@@ -936,10 +986,10 @@ private:
 
         createRandomInstances();
 
-        offscreenRenderPass.setup();
+        m_offscreenRenderPass.setup();
 
-        finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages, m_swapChainColorImageViews);
-        finalRenderPass.setup();
+        m_finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages, m_swapChainColorImageViews);
+        m_finalRenderPass.setup();
 
         createCommandBuffers();
         createSyncObjects();
@@ -965,8 +1015,8 @@ private:
         ImGui_ImplVulkan_Shutdown();
         m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
         
-        offscreenRenderPass.cleanup();
-        finalRenderPass.cleanup();
+        m_offscreenRenderPass.cleanup();
+        m_finalRenderPass.cleanup();
 
         m_pResourceManager->destroyTextures();
         m_pResourceManager->destroyBuffers();
@@ -1186,7 +1236,7 @@ private:
         }
 
         updateUniformBuffer("CameraBuffer");
-        offscreenRenderPass.record(commandBuffer);
+        m_offscreenRenderPass.record(commandBuffer);
 
         vk::ImageMemoryBarrier barrier { 
             .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -1211,7 +1261,7 @@ private:
                                       0, nullptr,
                                       1, &barrier);
 
-        finalRenderPass.record(commandBuffer);
+        m_finalRenderPass.record(commandBuffer);
 
         try { 
             commandBuffer.end();
@@ -1243,7 +1293,7 @@ private:
 
         // change the descriptor sets w.r.t. updated gui (e.g., output buffer)
         if (kDirty) {
-            finalRenderPass.updateDescriptorSets();
+            m_finalRenderPass.updateDescriptorSets();
             kDirty = false;
         }
 
@@ -1258,7 +1308,7 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
         
-        finalRenderPass.updateSwapChainImageIndex(imageIndex);
+        m_finalRenderPass.updateSwapChainImageIndex(imageIndex);
 
         // only reset the fence if we are submitting work
         if (m_vkContext.m_device.resetFences(1, &m_inFlightFence) != vk::Result::eSuccess) {

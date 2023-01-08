@@ -151,9 +151,11 @@ void ResourceManager::createVertexBuffer(const std::string& name, const std::vec
         memcpy(data, vertices.data(), (size_t)bufferSize);
     m_pContext->m_device.unmapMemory(stagingBufferMemory);
 
+    vk::BufferUsageFlags rayTracingFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eStorageBuffer;
+
     vk::Buffer vertexBuffer;
     vk::DeviceMemory vertexBufferMemory;
-    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | rayTracingFlags, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
 
     copyBuffer(*m_pContext, m_commandPool, stagingBuffer, vertexBuffer, bufferSize);
 
@@ -180,9 +182,11 @@ void ResourceManager::createIndexBuffer(const std::string& name, const std::vect
         memcpy(data, indices.data(), (size_t)bufferSize);
     m_pContext->m_device.unmapMemory(stagingBufferMemory);
 
+    vk::BufferUsageFlags rayTracingFlags = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eStorageBuffer;
+
     vk::Buffer indexBuffer;
     vk::DeviceMemory indexBufferMemory;
-    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
+    createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | rayTracingFlags, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
 
     copyBuffer(*m_pContext, m_commandPool, stagingBuffer, indexBuffer, bufferSize);
 
