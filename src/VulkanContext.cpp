@@ -154,9 +154,9 @@ void VulkanContext::pickPhysicalDevice() {
         }
     }
 
-    if (!m_physicalDevice) {
-        throw std::runtime_error("failed to find a suitable GPU!");
-    }
+    // if (!m_physicalDevice) {
+    //     throw std::runtime_error("failed to find a suitable GPU!");
+    // }
 }
 
 void VulkanContext::createLogicalDevice() {
@@ -207,6 +207,17 @@ void VulkanContext::createLogicalDevice() {
                     vk::PhysicalDeviceAccelerationStructureFeaturesKHR, 
                     vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
                     vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT> chain = {createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature};
+
+    // vk::DeviceCreateInfo createInfo { 
+    //     // .pNext = &accelFeature,
+    //     .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+    //     .pQueueCreateInfos = queueCreateInfos.data(),
+    //     .enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size()),
+    //     .ppEnabledExtensionNames = kDeviceExtensions.data(),
+    //     .pEnabledFeatures = &deviceFeatures 
+    // };
+
+    // vk::StructureChain<vk::DeviceCreateInfo> chain = {createInfo};
 
     if (kEnableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());

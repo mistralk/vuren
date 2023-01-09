@@ -1,6 +1,8 @@
 #ifndef COMMON_HPP
 #define COMMON_HPP
 
+#ifdef __cplusplus
+
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
@@ -13,18 +15,32 @@
 
 namespace vrb {
 
+using vec2 = glm::vec2;
+using vec3 = glm::vec3;
+using vec4 = glm::vec4;
+using mat4 = glm::mat4x4;
+using uint = unsigned int;
+
 const uint32_t kWidth = 800;
 const uint32_t kHeight = 600;
 static std::string kAppName = "vrb";
 // const int kMaxFramesInFlight = 1;
 
 struct Buffer;
+struct SceneObject {
+    uint vertexBufferSize {0};
+    uint indexBufferSize {0};
+    Buffer* vertexBuffer;
+    Buffer* indexBuffer;
+};
+#endif // __cplusplus
 
 struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 normal;
-    glm::vec2 texCoord;
+    vec3 pos;
+    vec3 normal;
+    vec2 texCoord;
 
+#ifdef __cplusplus
     static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions() {
         std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions{};
 
@@ -52,37 +68,26 @@ struct Vertex {
     bool operator==(const Vertex& other) const {
         return pos == other.pos && normal == other.normal && texCoord == other.texCoord;
     }
-};
-
-struct Camera {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
-};
-
-struct SceneObject {
-    uint32_t vertexBufferSize {0};
-    uint32_t indexBufferSize {0};
-    Buffer* vertexBuffer;
-    Buffer* indexBuffer;
+#endif // __cplusplus
 };
 
 struct ObjectInstance {
-    glm::mat4x4 world;
-    glm::mat4x4 invTransposeWorld;
-    uint32_t objectId;
+    mat4 world;
+    mat4 invTransposeWorld;
+    uint objectId;
 
+#ifdef __cplusplus
     static std::array<vk::VertexInputAttributeDescription, 9> getAttributeDescriptions() {
         std::array<vk::VertexInputAttributeDescription, 9> attributeDescriptions{};
 
         // world matrix 4x4
-        for (uint32_t i = 0; i < 4; ++i) {
+        for (uint i = 0; i < 4; ++i) {
             attributeDescriptions[i].format = vk::Format::eR32G32B32A32Sfloat;
             attributeDescriptions[i].offset = i * 4 * sizeof(float);
         }
 
         // transpose of inverse of world matrix 4x4
-        for (uint32_t i = 4; i < 8; ++i) {
+        for (uint i = 4; i < 8; ++i) {
             attributeDescriptions[i].format = vk::Format::eR32G32B32A32Sfloat;
             attributeDescriptions[i].offset = i * 4 * sizeof(float);
         }
@@ -93,8 +98,24 @@ struct ObjectInstance {
 
         return attributeDescriptions;
     }
+#endif // __cplusplus
 };
 
+struct Camera {
+    mat4 view;
+    mat4 proj;
+    mat4 invView;
+    mat4 invProj;
+};
+
+struct PushConstantRay {
+    vec4 clearColor;
+    vec3 lightPosition;
+    float lightIntensity;
+    int lightType;
+};
+
+#ifdef __cplusplus
 } // namespace vrb
 
 namespace std {
@@ -106,5 +127,6 @@ template<> struct hash<vrb::Vertex> {
     }
 };
 } // namespace std
+#endif // __cplusplus
 
 #endif // COMMON_HPP

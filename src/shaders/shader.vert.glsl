@@ -1,12 +1,14 @@
 #version 460
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 // #extension GL_EXT_debug_printf : enable
 
+#include "../Common.hpp"
+
 // camera data
-layout(binding = 0) uniform Camera {
-    mat4 model;
-    mat4 view;
-    mat4 proj;
-} camera;
+layout(binding = 0) uniform _Camera {
+	Camera camera;
+};
 
 // per-vertex data
 layout(location = 0) in vec3 inPosition;

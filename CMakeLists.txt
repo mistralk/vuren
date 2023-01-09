@@ -45,7 +45,7 @@ foreach(GLSL_SOURCE_FILE ${GLSL_SOURCE_FILES})
         COMMENT "Compiling shader"
         OUTPUT ${SPIRV_OUT}
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders/"
-        COMMAND ${GLSLANG_VALIDATOR} -V ${GLSL_SOURCE_FILE} -o ${SPIRV_OUT}
+        COMMAND ${GLSLANG_VALIDATOR} -V ${GLSL_SOURCE_FILE} -o ${SPIRV_OUT} --target-env spirv1.5
         DEPENDS ${GLSL_SOURCE_FILE}
     )
 

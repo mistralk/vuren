@@ -2,10 +2,28 @@
 
 namespace vrb {
 
+// RasterizationPipeline
+
+RasterizationPipeline::RasterizationPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RasterProperties rasterProperties)
+    : Pipeline(pContext, renderPass, descriptorSetLayout), m_rasterProperties(rasterProperties) {
+}
+
 void RasterizationPipeline::setup() {
-    if (!m_pContext->m_device || !m_renderPass || !m_descriptorSetLayout || !m_pipelineLayout) {
+    if (!m_pContext->m_device || !m_renderPass || !m_descriptorSetLayout) {
         throw std::runtime_error("pipeline setup failed!"
-            "logical device, render pass, descriptor set layout and pipeline layout must be valid before the pipeline creation.");
+            "logical device, render pass, descriptor set layout must be valid before the pipeline creation.");
+    }
+
+    // create a pipeline layout
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo { 
+        .setLayoutCount = 1,
+        .pSetLayouts = &m_descriptorSetLayout,
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = nullptr
+    };
+
+    if (m_pContext->m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_pipelineLayout) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a pipeline layout!");
     }
 
     auto vertShaderCode = readFile(m_rasterProperties.vertShaderPath);
@@ -177,6 +195,108 @@ void RasterizationPipeline::setup() {
 
     m_pContext->m_device.destroyShaderModule(fragShaderModule, nullptr);
     m_pContext->m_device.destroyShaderModule(vertShaderModule, nullptr);
+}
+
+// RayTracingPipeline
+
+RayTracingPipeline::RayTracingPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RayTracingProperties rayTracingProperties)
+    : Pipeline(pContext, renderPass, descriptorSetLayout), m_rayTracingProperties(rayTracingProperties) {
+}
+
+void RayTracingPipeline::setup() {
+    enum StageIndices {
+        eRaygen,
+        eMiss,
+        eClosestHit,
+        eShaderGroupCount
+    };
+
+    auto raygenShaderCode = readFile(m_rayTracingProperties.raygenShaderPath);
+    auto missShaderCode = readFile(m_rayTracingProperties.missShaderPath);
+    auto closestHitShaderCode = readFile(m_rayTracingProperties.closestHitShaderPath);
+
+    std::array<vk::PipelineShaderStageCreateInfo, eShaderGroupCount> stages{};
+    vk::PipelineShaderStageCreateInfo stage { .pName = "main" };
+
+    // raygen
+    stage.module = createShaderModule(raygenShaderCode);
+    stage.stage = vk::ShaderStageFlagBits::eRaygenKHR;
+    stages[eRaygen] = stage;
+
+    // miss
+    stage.module = createShaderModule(missShaderCode);
+    stage.stage = vk::ShaderStageFlagBits::eMissKHR;
+    stages[eMiss] = stage;
+
+    // hit group - closest hit
+    stage.module = createShaderModule(closestHitShaderCode);
+    stage.stage = vk::ShaderStageFlagBits::eClosestHitKHR;
+    stages[eClosestHit] = stage;
+
+    // shader groups
+    vk::RayTracingShaderGroupCreateInfoKHR group {
+        .generalShader = VK_SHADER_UNUSED_KHR,
+        .closestHitShader = VK_SHADER_UNUSED_KHR,
+        .anyHitShader = VK_SHADER_UNUSED_KHR,
+        .intersectionShader = VK_SHADER_UNUSED_KHR
+    };
+
+    // raygen
+    group.type = vk::RayTracingShaderGroupTypeKHR::eGeneral;
+    group.generalShader = eRaygen;
+    m_shaderGroups.push_back(group);
+
+    // miss
+    group.type = vk::RayTracingShaderGroupTypeKHR::eGeneral;
+    group.generalShader = eMiss;
+    m_shaderGroups.push_back(group);
+
+    // closest hit
+    group.type = vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup;
+    group.generalShader = VK_SHADER_UNUSED_KHR;
+    group.closestHitShader = eClosestHit;
+    m_shaderGroups.push_back(group);
+
+    // setup the pipeline layout that will describe how the pipeline will access external data
+
+    // define the push constant range used by the pipeline layout
+
+    vk::PushConstantRange pushConstantRange {
+        .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eMissKHR,
+        .offset = 0,
+        .size = sizeof(PushConstantRay)};
+
+    vk::PipelineLayoutCreateInfo layoutCreateInfo {
+        .setLayoutCount = 1,
+        .pSetLayouts = &m_descriptorSetLayout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstantRange
+    };
+
+    if (m_pContext->m_device.createPipelineLayout(&layoutCreateInfo, nullptr, &m_pipelineLayout) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a pipeline layout!");
+    }
+
+    // ray tracing pipeline can contain an arbitrary number of stages
+    // depending on the number of active shaders in the scene.
+    
+    // assemble the shader stages and recursion depth info
+    vk::RayTracingPipelineCreateInfoKHR rtPipelineInfo {
+        .stageCount = static_cast<uint32_t>(stages.size()),
+        .pStages = stages.data(),
+        .groupCount = static_cast<uint32_t>(m_shaderGroups.size()),
+        .pGroups = m_shaderGroups.data(),
+        .maxPipelineRayRecursionDepth = 1,
+        .layout = m_pipelineLayout
+    };
+
+    if (m_pContext->m_device.createRayTracingPipelinesKHR({}, {}, 1, &rtPipelineInfo, nullptr, &m_pipeline) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create ray tracing pipelines");
+    }
+
+    for (auto& stage : stages) {
+        m_pContext->m_device.destroyShaderModule(stage.module, nullptr);
+    }
 }
 
 } // namespace vrb

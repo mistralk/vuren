@@ -49,7 +49,10 @@ public:
         : m_pipelineType(pipelineType) {
     }
 
-    virtual ~RenderPass() {}
+    RenderPass() = delete;
+
+    virtual ~RenderPass() {
+    }
 
     virtual void init(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
         m_pContext = pContext;
@@ -60,7 +63,7 @@ public:
     
     virtual void setup() = 0;
     virtual void record(vk::CommandBuffer commandBuffer) = 0;
-    void cleanup();
+    virtual void cleanup();
 
     vk::RenderPass getRenderPass() {
         return m_renderPass;
@@ -80,7 +83,6 @@ protected:
     vk::RenderPass m_renderPass {VK_NULL_HANDLE};
     vk::Framebuffer m_framebuffer {VK_NULL_HANDLE};
     vk::DescriptorSetLayout m_descriptorSetLayout {VK_NULL_HANDLE};
-    vk::PipelineLayout m_pipelineLayout {VK_NULL_HANDLE};
     vk::DescriptorPool m_descriptorPool {VK_NULL_HANDLE};
     vk::DescriptorSet m_descriptorSet {VK_NULL_HANDLE};
 

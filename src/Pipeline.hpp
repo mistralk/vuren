@@ -28,16 +28,17 @@ struct RayTracingProperties {
 
 class Pipeline {
 public:
-    Pipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, vk::PipelineLayout pipelineLayout)
-     : m_pContext(pContext), m_renderPass(renderPass), m_descriptorSetLayout(descriptorSetLayout), m_pipelineLayout(pipelineLayout) {
+    Pipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout)
+     : m_pContext(pContext), m_renderPass(renderPass), m_descriptorSetLayout(descriptorSetLayout) {
     }
 
     virtual ~Pipeline() {}
 
-    Pipeline() {}
+    Pipeline() = delete;
 
     virtual void cleanup() {
         m_pContext->m_device.destroyPipeline(m_pipeline, nullptr);
+        m_pContext->m_device.destroyPipelineLayout(m_pipelineLayout, nullptr);
     }
 
     virtual void setup() = 0;
@@ -46,12 +47,12 @@ public:
         return m_pipeline;
     }
 
-    void setRenderPass(vk::RenderPass renderPass) {
-        m_renderPass = renderPass;
+    vk::PipelineLayout getPipelineLayout() {
+        return m_pipelineLayout;
     }
 
-    void setPipelineLayout(vk::PipelineLayout pipelineLayout) {
-        m_pipelineLayout = pipelineLayout;
+    void setRenderPass(vk::RenderPass renderPass) {
+        m_renderPass = renderPass;
     }
 
     void setDescriptorSetLayout(vk::DescriptorSetLayout descriptorSetLayout) {
@@ -73,135 +74,33 @@ protected:
         return shaderModule;
     }
 
-    vk::Pipeline m_pipeline;
+    vk::Pipeline m_pipeline {VK_NULL_HANDLE};
+    vk::PipelineLayout m_pipelineLayout {VK_NULL_HANDLE};
 
     VulkanContext* m_pContext {nullptr};
-    vk::RenderPass m_renderPass {nullptr};
-    vk::DescriptorSetLayout m_descriptorSetLayout {nullptr};
-    vk::PipelineLayout m_pipelineLayout {nullptr};
+    vk::RenderPass m_renderPass {VK_NULL_HANDLE};
+    vk::DescriptorSetLayout m_descriptorSetLayout {VK_NULL_HANDLE};
 
 
 }; // class Pipeline
 
-// class RayTracingPipeline : public Pipeline {
-// public:
-//     RayTracingPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, vk::PipelineLayout pipelineLayout, RayTracingProperties rayTracingProperties)
-//      : Pipeline(pContext, renderPass, descriptorSetLayout, pipelineLayout), m_rayTracingProperties(rayTracingProperties) {
-//     }
+class RayTracingPipeline : public Pipeline {
+public:
+    RayTracingPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RayTracingProperties rayTracingProperties);
 
-//     ~RayTracingPipeline() {
-//     }
+    void setup() override;
 
-//     void setup() {
-//         enum StageIndices {
-//             eRaygen,
-//             eMiss,
-//             eClosestHit,
-//             eShaderGroupCount
-//         };
+private:
+    RayTracingProperties m_rayTracingProperties;
+    std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_shaderGroups;
 
-//         const std::string raygenShaderPath = "shaders/rt.rgen.spv";
-//         const std::string missShaderPath = "shaders/miss.rgen.spv";
-//         const std::string closestHitShaderPath = "shaders/closesthit.rgen.spv";
-
-//         auto raygenShaderCode = readFile(raygenShaderPath);
-//         auto missShaderCode = readFile(missShaderPath);
-//         auto closestHitShaderCode = readFile(closestHitShaderPath);
-
-//         std::array<vk::PipelineShaderStageCreateInfo, eShaderGroupCount> stages{};
-//         vk::PipelineShaderStageCreateInfo stage { .pName = "main" };
-
-//         // raygen
-//         stage.module = createShaderModule(raygenShaderCode);
-//         stage.stage = vk::ShaderStageFlagBits::eRaygenKHR;
-//         stages[eRaygen] = stage;
-
-//         // miss
-//         stage.module = createShaderModule(missShaderCode);
-//         stage.stage = vk::ShaderStageFlagBits::eMissKHR;
-//         stages[eMiss] = stage;
-
-//         // hit group - closest hit
-//         stage.module = createShaderModule(closestHitShaderCode);
-//         stage.stage = vk::ShaderStageFlagBits::eClosestHitKHR;
-//         stages[eClosestHit] = stage;
-
-//         // shader groups
-//         vk::RayTracingShaderGroupCreateInfoKHR group {
-//             .generalShader = VK_SHADER_UNUSED_KHR,
-//             .closestHitShader = VK_SHADER_UNUSED_KHR,
-//             .anyHitShader = VK_SHADER_UNUSED_KHR,
-//             .intersectionShader = VK_SHADER_UNUSED_KHR
-//         };
-
-//         // raygen
-//         group.type = vk::RayTracingShaderGroupTypeKHR::eGeneral;
-//         group.generalShader = eRaygen;
-//         m_shaderGroups.push_back(group);
-
-//         // miss
-//         group.type = vk::RayTracingShaderGroupTypeKHR::eGeneral;
-//         group.generalShader = eMiss;
-//         m_shaderGroups.push_back(group);
-
-//         // closest hit
-//         group.type = vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup;
-//         group.generalShader = VK_SHADER_UNUSED_KHR;
-//         group.closestHitShader = eClosestHit;
-//         m_shaderGroups.push_back(group);
-
-//         // setup the pipeline rayout that will describe how the pipeline will access external data
-//         vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-
-//         // push constant
-//         vk::PushConstantRange pushConstant{vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eMissKHR,
-//                                            0, sizeof(PushConstantRay)};
-
-//         vk::PipelineLayoutCreateInfo layoutCreateInfo {
-//             .pushConstantRangeCount = 1,
-//             .pPushConstantRanges = &pushConstant
-//         };
-
-//         // descriptor sets (TLAS and output)
-
-//         // create pipeline layout
-
-//         // ray tracing pipeline can contain an arbitrary number of stages
-//         // depending on the number of active shaders in the scene.
-        
-//         // assemble the shader stages and recursion depth info
-//         vk::RayTracingPipelineCreateInfoKHR rtPipelineInfo {
-//             .stageCount = static_cast<uint32_t>(stages.size()),
-//             .pStages = stages.data(),
-//             .groupCount = static_cast<uint32_t>(m_shaderGroups.size()),
-//             .pGroups = m_shaderGroups.data(),
-//             .maxPipelineRayRecursionDepth = 1,
-//             .layout = m_rtPipelineLayout
-//         };
-
-//         m_pContext->m_device.createRayTracingPipelinesKHR({}, {}, 1, &rtPipelineInfo, nullptr, &m_pipeline);
-
-//         for (auto& stage : stages) {
-//             m_pContext->m_device.destroyShaderModule(stage.module, nullptr);
-//         }
-//     }
-
-// private:
-//     RayTracingProperties m_rayTracingProperties;
-//     std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_shaderGroups;
-
-// }; // class RayTracingPipeline
+}; // class RayTracingPipeline
 
 class RasterizationPipeline : public Pipeline {
 public:
-    RasterizationPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, vk::PipelineLayout pipelineLayout, RasterProperties rasterProperties)
-     : Pipeline(pContext, renderPass, descriptorSetLayout, pipelineLayout), m_rasterProperties(rasterProperties) {
-    }
+    RasterizationPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RasterProperties rasterProperties);
 
-    ~RasterizationPipeline() {
-    }
-
-    void setup();
+    void setup() override;
 
 private:
     RasterProperties m_rasterProperties;

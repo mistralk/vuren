@@ -572,8 +572,19 @@ void transitionImageLayout(const VulkanContext& context, vk::CommandPool& comman
     vk::PipelineStageFlags sourceStage;
     vk::PipelineStageFlags destinationStage;
 
-    // For transitioning to the offscreen image
+    // storage image
     if (oldLayout == vk::ImageLayout::eUndefined &&
+        newLayout == vk::ImageLayout::eGeneral) {
+
+        barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eShaderRead;
+        
+        sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
+        destinationStage = vk::PipelineStageFlagBits::eRayTracingShaderKHR;
+    }
+
+    // For transitioning to the offscreen image
+    else if (oldLayout == vk::ImageLayout::eUndefined &&
         newLayout == vk::ImageLayout::eColorAttachmentOptimal) {
 
         barrier.srcAccessMask = vk::AccessFlagBits::eNone;

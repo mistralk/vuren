@@ -90,6 +90,9 @@ public:
     Texture getTexture(const std::string& name);
     Buffer getBuffer(const std::string& name);
     void* getMappedBuffer(const std::string& name);
+    const std::unordered_map<std::string, Texture>& getTextureDict() {
+        return m_globalTextureDict;
+    }
 
     void insertBuffer(const std::string& name, Buffer buffer) {
         m_globalBufferDict.insert({name, buffer});

@@ -68,13 +68,22 @@ void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAtta
         .pDepthStencilAttachment = &depthAttachmentRef 
     };
     
+    // vk::SubpassDependency dependency { 
+    //     .srcSubpass = VK_SUBPASS_EXTERNAL,
+    //     .dstSubpass = 0,
+    //     .srcStageMask = srcStageMask,
+    //     .dstStageMask = dstStageMask,
+    //     .srcAccessMask = srcAccessMask,
+    //     .dstAccessMask = dstAccessMask
+    // };
+
     vk::SubpassDependency dependency { 
         .srcSubpass = VK_SUBPASS_EXTERNAL,
         .dstSubpass = 0,
-        .srcStageMask = srcStageMask,
-        .dstStageMask = dstStageMask,
-        .srcAccessMask = srcAccessMask,
-        .dstAccessMask = dstAccessMask
+        .srcStageMask = vk::PipelineStageFlagBits::eFragmentShader,
+        .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        .srcAccessMask = vk::AccessFlagBits::eShaderRead,
+        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite
     };
 
     vk::RenderPassCreateInfo renderPassInfo { 
@@ -96,7 +105,6 @@ void RenderPass::cleanup() {
     m_pContext->m_device.destroyRenderPass(m_renderPass, nullptr);
     m_pContext->m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
     m_pContext->m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
-    m_pContext->m_device.destroyPipelineLayout(m_pipelineLayout, nullptr);
     m_pPipeline->cleanup();
 }
 
@@ -148,18 +156,6 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
         throw std::runtime_error("failed to create a descriptor set layout!");
     }
 
-    // create a pipeline layout
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo { 
-        .setLayoutCount = 1,
-        .pSetLayouts = &m_descriptorSetLayout,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = nullptr
-    };
-
-    if (m_pContext->m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_pipelineLayout) != vk::Result::eSuccess) {
-        throw std::runtime_error("failed to create a pipeline layout!");
-    }
-
     // create a descriptor pool
     std::vector<vk::DescriptorPoolSize> poolSizes(bindings.size());
     for (size_t i = 0; i < poolSizes.size(); ++i) {
@@ -197,6 +193,7 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
     std::vector<vk::WriteDescriptorSet> descriptorWrites;
 
     for (size_t i = 0; i < bindings.size(); ++i) {
+        vk::WriteDescriptorSet bufferWrite;
         vk::DescriptorBufferInfo* pBufferInfo = nullptr;
         vk::DescriptorImageInfo* pImageInfo = nullptr;
 
@@ -206,6 +203,16 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
                 .accelerationStructureCount = 1,
                 .pAccelerationStructures = &tlas
             };
+            
+            bufferWrite.pNext = (void*)&descriptorSetAsInfo;
+            bufferWrite.dstSet = m_descriptorSet;
+            bufferWrite.dstBinding = static_cast<uint32_t>(i);
+            bufferWrite.dstArrayElement = 0;
+            bufferWrite.descriptorCount = 1;
+            bufferWrite.descriptorType = bindings[i].descriptorType;
+            bufferWrite.pImageInfo = nullptr;
+            bufferWrite.pBufferInfo = nullptr;
+            bufferWrite.pTexelBufferView = nullptr;
         }
         else {
             switch (bindings[i].descriptorType) {
@@ -240,18 +247,16 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
                 default:
                     throw std::runtime_error("unsupported descriptor type!"); 
             }
-        }
 
-        vk::WriteDescriptorSet bufferWrite = { 
-            .dstSet = m_descriptorSet,
-            .dstBinding = static_cast<uint32_t>(i),
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType = bindings[i].descriptorType,
-            .pImageInfo = pImageInfo,
-            .pBufferInfo = pBufferInfo,
-            .pTexelBufferView = nullptr
-        };
+            bufferWrite.dstSet = m_descriptorSet;
+            bufferWrite.dstBinding = static_cast<uint32_t>(i);
+            bufferWrite.dstArrayElement = 0;
+            bufferWrite.descriptorCount = 1;
+            bufferWrite.descriptorType = bindings[i].descriptorType;
+            bufferWrite.pImageInfo = pImageInfo;
+            bufferWrite.pBufferInfo = pBufferInfo;
+            bufferWrite.pTexelBufferView = nullptr;
+        }
 
         descriptorWrites.push_back(bufferWrite);
     }
@@ -266,7 +271,7 @@ void RenderPass::setupRasterPipeline(const std::string& vertShaderPath, const st
     m_rasterProperties.fragShaderPath = fragShaderPath;
     m_rasterProperties.isBiltPass = isBlitPass;
 
-    m_pPipeline = std::make_unique<RasterizationPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_pipelineLayout, m_rasterProperties);
+    m_pPipeline = std::make_unique<RasterizationPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_rasterProperties);
 
     m_pPipeline->setup();
 }
@@ -277,8 +282,10 @@ void RenderPass::setupRayTracingPipeline(const std::string& raygenShaderPath, co
     m_rayTracingProperties.raygenShaderPath = raygenShaderPath;
     m_rayTracingProperties.missShaderPath = missShaderPath;
     m_rayTracingProperties.closestHitShaderPath = closestHitShaderPath;
+    m_rayTracingProperties.blas = blas;
+    m_rayTracingProperties.tlas = tlas;
 
-    // m_pPipeline = std::make_unique<RayTracingPipeline>(m_renderPass, m_pipelineLayout, m_descriptorSetLayout, m_rayTracingProperties);
+    m_pPipeline = std::make_unique<RayTracingPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_rayTracingProperties);
 
     m_pPipeline->setup();
 }
