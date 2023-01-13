@@ -12,8 +12,10 @@
 namespace vrb {
 
 struct RasterProperties {
+    vk::RenderPass renderPass {VK_NULL_HANDLE};
+    vk::Framebuffer framebuffer {VK_NULL_HANDLE};
     bool isBiltPass {false};
-    uint32_t colorAttachmentCount;
+    uint32_t colorAttachmentCount {0};
     std::string vertShaderPath;
     std::string fragShaderPath;
 };
@@ -28,8 +30,8 @@ struct RayTracingProperties {
 
 class Pipeline {
 public:
-    Pipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout)
-     : m_pContext(pContext), m_renderPass(renderPass), m_descriptorSetLayout(descriptorSetLayout) {
+    Pipeline(VulkanContext* pContext, vk::DescriptorSetLayout descriptorSetLayout)
+     : m_pContext(pContext), m_descriptorSetLayout(descriptorSetLayout) {
     }
 
     virtual ~Pipeline() {}
@@ -37,8 +39,8 @@ public:
     Pipeline() = delete;
 
     virtual void cleanup() {
-        m_pContext->m_device.destroyPipeline(m_pipeline, nullptr);
-        m_pContext->m_device.destroyPipelineLayout(m_pipelineLayout, nullptr);
+        if (m_pipeline) m_pContext->m_device.destroyPipeline(m_pipeline, nullptr);
+        if (m_pipelineLayout) m_pContext->m_device.destroyPipelineLayout(m_pipelineLayout, nullptr);
     }
 
     virtual void setup() = 0;
@@ -49,10 +51,6 @@ public:
 
     vk::PipelineLayout getPipelineLayout() {
         return m_pipelineLayout;
-    }
-
-    void setRenderPass(vk::RenderPass renderPass) {
-        m_renderPass = renderPass;
     }
 
     void setDescriptorSetLayout(vk::DescriptorSetLayout descriptorSetLayout) {
@@ -78,15 +76,26 @@ protected:
     vk::PipelineLayout m_pipelineLayout {VK_NULL_HANDLE};
 
     VulkanContext* m_pContext {nullptr};
-    vk::RenderPass m_renderPass {VK_NULL_HANDLE};
     vk::DescriptorSetLayout m_descriptorSetLayout {VK_NULL_HANDLE};
 
 
 }; // class Pipeline
 
+class RasterizationPipeline : public Pipeline {
+public:
+    RasterizationPipeline(VulkanContext* pContext, vk::DescriptorSetLayout descriptorSetLayout, RasterProperties rasterProperties);
+
+    void setup() override;
+
+private:
+    RasterProperties m_rasterProperties;
+
+}; // class RasterizationPipeline
+
+
 class RayTracingPipeline : public Pipeline {
 public:
-    RayTracingPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RayTracingProperties rayTracingProperties);
+    RayTracingPipeline(VulkanContext* pContext, vk::DescriptorSetLayout descriptorSetLayout, RayTracingProperties rayTracingProperties);
 
     void setup() override;
 
@@ -95,17 +104,6 @@ private:
     std::vector<vk::RayTracingShaderGroupCreateInfoKHR> m_shaderGroups;
 
 }; // class RayTracingPipeline
-
-class RasterizationPipeline : public Pipeline {
-public:
-    RasterizationPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RasterProperties rasterProperties);
-
-    void setup() override;
-
-private:
-    RasterProperties m_rasterProperties;
-
-}; // class RasterizationPipeline
 
 } // namespace vrb
 

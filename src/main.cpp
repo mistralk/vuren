@@ -80,9 +80,17 @@ public:
         m_commandPool = commandPool;
         m_pResourceManager = pResourceManager; 
         m_pScene = pScene;
+
+        vk::PhysicalDeviceProperties2 prop2 {
+            .pNext = &m_rtProperties
+        };
+        m_pContext->m_physicalDevice.getProperties2(&prop2);
+
+        createBlas();
+        createTlas(m_pScene->getInstances());
     }
 
-    void setup() override {
+    void define() {
         m_pResourceManager->createTextureRGBA32Sfloat("RtColor");
         auto texture = m_pResourceManager->getTexture("RtColor");
         transitionImageLayout(*m_pContext, m_commandPool, texture, 
@@ -103,6 +111,11 @@ public:
         createDescriptorSet(bindings);
 
         setupRayTracingPipeline("shaders/rt.rgen.spv", "shaders/rt.rmiss.spv", "shaders/rt.rchit.spv");
+    }
+
+    void setup() override {
+        define();
+        createShaderBindingTable();
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
@@ -128,13 +141,6 @@ public:
             destroyBuffer(*m_pContext, blas.buffer);
         }
         RenderPass::cleanup();
-    }
-
-    void initRayTracing() {
-        vk::PhysicalDeviceProperties2 prop2 {
-            .pNext = &m_rtProperties
-        };
-        m_pContext->m_physicalDevice.getProperties2(&prop2);
     }
 
     BlasInput objectToVkGeometryKHR(const SceneObject& object) {
@@ -652,8 +658,8 @@ public:
         clearValues[3].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
 
         vk::RenderPassBeginInfo renderPassInfo { 
-            .renderPass = m_renderPass,
-            .framebuffer = m_framebuffer,
+            .renderPass = m_rasterProperties.renderPass,
+            .framebuffer = m_rasterProperties.framebuffer,
             .renderArea {
                 .offset = {0, 0},
                 .extent = m_extent },
@@ -695,7 +701,7 @@ public:
             commandBuffer.bindVertexBuffers(1, 1, &instanceBuffer, offsets);
             commandBuffer.bindIndexBuffer(object.indexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
             commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pPipeline->getPipelineLayout(), 0, 1, &m_descriptorSet, 0, nullptr);
-            commandBuffer.drawIndexed(object.indexBufferSize, m_pScene->getInstanceCount(), 0, 0, 0);
+            commandBuffer.drawIndexed(object.indexBufferSize, m_pScene->getInstances().size(), 0, 0, 0);
         }
 
         commandBuffer.endRenderPass();
@@ -778,7 +784,7 @@ public:
         clearValues[1].depthStencil = vk::ClearDepthStencilValue {1.0f, 0};
 
         vk::RenderPassBeginInfo renderPassInfo { 
-            .renderPass = m_renderPass,
+            .renderPass = m_rasterProperties.renderPass,
             .framebuffer = (*m_swapChainFramebuffers)[m_swapChainImageIndex],
             .renderArea { 
                 .offset = {0, 0},
@@ -834,7 +840,7 @@ public:
             };
 
             vk::FramebufferCreateInfo framebufferInfo { 
-                .renderPass = m_renderPass,
+                .renderPass = m_rasterProperties.renderPass,
                 .attachmentCount = static_cast<uint32_t>(attachments.size()),
                 .pAttachments = attachments.data(),
                 .width = m_extent.width,
@@ -938,18 +944,15 @@ private:
 
     // scene description
     std::shared_ptr<Scene> m_pScene;
-    std::vector<ObjectInstance> m_instances;
 
-    // for the offscreen pass
     OffscreenRenderPass m_offscreenRenderPass;
+    RayTracingRenderPass m_rtRenderPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
     FinalRenderPass m_finalRenderPass;
     vk::DescriptorPool m_imguiDescriptorPool; // additional descriptor pool for imgui
 
-    // ray tracing
-    RayTracingRenderPass m_rtRenderPass;
 
 public:
     Application() {
@@ -1096,11 +1099,7 @@ private:
 
         m_rtRenderPass.setExtent(m_swapChainExtent);
         m_rtRenderPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        m_rtRenderPass.initRayTracing();
-        m_rtRenderPass.createBlas();
-        m_rtRenderPass.createTlas(m_instances);
         m_rtRenderPass.setup();
-        m_rtRenderPass.createShaderBindingTable();
 
         m_finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages, m_swapChainColorImageViews);
         m_finalRenderPass.setup();
@@ -1166,14 +1165,12 @@ private:
             instance.invTransposeWorld = glm::transpose(glm::inverse(instance.world));
             instance.objectId = 0;
             
-            m_instances.push_back(instance);
+            m_pScene->addInstance(instance);
         }
-
-        m_pScene->setInstanceCount(m_instances.size());
 
         Buffer buffer;
 
-        vk::DeviceSize bufferSize = m_instances.size() * sizeof(ObjectInstance);
+        vk::DeviceSize bufferSize = m_pScene->getInstances().size() * sizeof(ObjectInstance);
 
         // staging buffer
         vk::Buffer stagingBuffer;
@@ -1182,7 +1179,7 @@ private:
 
         void* data;
         data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
-            memcpy(data, m_instances.data(), (size_t)bufferSize);
+            memcpy(data, m_pScene->getInstances().data(), (size_t)bufferSize);
         m_vkContext.m_device.unmapMemory(stagingBufferMemory);
 
         // instance buffer

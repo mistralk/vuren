@@ -4,14 +4,14 @@ namespace vrb {
 
 // RasterizationPipeline
 
-RasterizationPipeline::RasterizationPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RasterProperties rasterProperties)
-    : Pipeline(pContext, renderPass, descriptorSetLayout), m_rasterProperties(rasterProperties) {
+RasterizationPipeline::RasterizationPipeline(VulkanContext* pContext, vk::DescriptorSetLayout descriptorSetLayout, RasterProperties rasterProperties)
+    : Pipeline(pContext, descriptorSetLayout), m_rasterProperties(rasterProperties) {
 }
 
 void RasterizationPipeline::setup() {
-    if (!m_pContext->m_device || !m_renderPass || !m_descriptorSetLayout) {
-        throw std::runtime_error("pipeline setup failed!"
-            "logical device, render pass, descriptor set layout must be valid before the pipeline creation.");
+    if (!m_pContext->m_device || !m_descriptorSetLayout) {
+        throw std::runtime_error("pipeline setup failed! "
+            "logical device and descriptor set layout must be valid before the pipeline creation.");
     }
 
     // create a pipeline layout
@@ -183,7 +183,7 @@ void RasterizationPipeline::setup() {
         .pColorBlendState = &colorBlending,
         .pDynamicState = &dynamicState,
         .layout = m_pipelineLayout,
-        .renderPass = m_renderPass,
+        .renderPass = m_rasterProperties.renderPass,
         .subpass = 0,
         .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = -1
@@ -199,8 +199,8 @@ void RasterizationPipeline::setup() {
 
 // RayTracingPipeline
 
-RayTracingPipeline::RayTracingPipeline(VulkanContext* pContext, vk::RenderPass renderPass, vk::DescriptorSetLayout descriptorSetLayout, RayTracingProperties rayTracingProperties)
-    : Pipeline(pContext, renderPass, descriptorSetLayout), m_rayTracingProperties(rayTracingProperties) {
+RayTracingPipeline::RayTracingPipeline(VulkanContext* pContext, vk::DescriptorSetLayout descriptorSetLayout, RayTracingProperties rayTracingProperties)
+    : Pipeline(pContext, descriptorSetLayout), m_rayTracingProperties(rayTracingProperties) {
 }
 
 void RayTracingPipeline::setup() {

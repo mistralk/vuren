@@ -66,7 +66,7 @@ public:
     virtual void cleanup();
 
     vk::RenderPass getRenderPass() {
-        return m_renderPass;
+        return m_rasterProperties.renderPass;
     }
 
     void setExtent(vk::Extent2D extent) {
@@ -80,8 +80,6 @@ protected:
     RasterProperties m_rasterProperties;
     RayTracingProperties m_rayTracingProperties;
 
-    vk::RenderPass m_renderPass {VK_NULL_HANDLE};
-    vk::Framebuffer m_framebuffer {VK_NULL_HANDLE};
     vk::DescriptorSetLayout m_descriptorSetLayout {VK_NULL_HANDLE};
     vk::DescriptorPool m_descriptorPool {VK_NULL_HANDLE};
     vk::DescriptorSet m_descriptorSet {VK_NULL_HANDLE};

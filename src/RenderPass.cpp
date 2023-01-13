@@ -4,7 +4,7 @@
 namespace vrb {
 
 void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo) {
-    if (m_renderPass) {
+    if (m_rasterProperties.renderPass) {
         return;
     }
 
@@ -95,16 +95,16 @@ void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAtta
         .pDependencies = &dependency 
     };
     
-    if (m_pContext->m_device.createRenderPass(&renderPassInfo, nullptr, &m_renderPass) != vk::Result::eSuccess) {
+    if (m_pContext->m_device.createRenderPass(&renderPassInfo, nullptr, &m_rasterProperties.renderPass) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create render pass!");
     }
 }
 
 void RenderPass::cleanup() {
-    if (m_framebuffer) m_pContext->m_device.destroyFramebuffer(m_framebuffer, nullptr);
-    m_pContext->m_device.destroyRenderPass(m_renderPass, nullptr);
-    m_pContext->m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
-    m_pContext->m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
+    if (m_rasterProperties.framebuffer) m_pContext->m_device.destroyFramebuffer(m_rasterProperties.framebuffer, nullptr);
+    if (m_rasterProperties.renderPass) m_pContext->m_device.destroyRenderPass(m_rasterProperties.renderPass, nullptr);
+    if (m_descriptorPool) m_pContext->m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
+    if (m_descriptorSetLayout) m_pContext->m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
     m_pPipeline->cleanup();
 }
 
@@ -116,7 +116,7 @@ void RenderPass::createFramebuffer(const std::vector<AttachmentInfo>& colorAttac
     attachments.push_back(depthStencilAttachmentInfo.imageView);
 
     vk::FramebufferCreateInfo framebufferInfo { 
-        .renderPass = m_renderPass,
+        .renderPass = m_rasterProperties.renderPass,
         .attachmentCount = static_cast<uint32_t>(attachments.size()),
         .pAttachments = attachments.data(),
         .width = m_extent.width,
@@ -124,7 +124,7 @@ void RenderPass::createFramebuffer(const std::vector<AttachmentInfo>& colorAttac
         .layers = 1
     };
 
-    if (m_pContext->m_device.createFramebuffer(&framebufferInfo, nullptr, &m_framebuffer) != vk::Result::eSuccess) {
+    if (m_pContext->m_device.createFramebuffer(&framebufferInfo, nullptr, &m_rasterProperties.framebuffer) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create framebuffer!");
     }
 
@@ -271,7 +271,7 @@ void RenderPass::setupRasterPipeline(const std::string& vertShaderPath, const st
     m_rasterProperties.fragShaderPath = fragShaderPath;
     m_rasterProperties.isBiltPass = isBlitPass;
 
-    m_pPipeline = std::make_unique<RasterizationPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_rasterProperties);
+    m_pPipeline = std::make_unique<RasterizationPipeline>(m_pContext, m_descriptorSetLayout, m_rasterProperties);
 
     m_pPipeline->setup();
 }
@@ -283,7 +283,7 @@ void RenderPass::setupRayTracingPipeline(const std::string& raygenShaderPath, co
     m_rayTracingProperties.missShaderPath = missShaderPath;
     m_rayTracingProperties.closestHitShaderPath = closestHitShaderPath;
 
-    m_pPipeline = std::make_unique<RayTracingPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_rayTracingProperties);
+    m_pPipeline = std::make_unique<RayTracingPipeline>(m_pContext, m_descriptorSetLayout, m_rayTracingProperties);
 
     m_pPipeline->setup();
 }
