@@ -276,14 +276,12 @@ void RenderPass::setupRasterPipeline(const std::string& vertShaderPath, const st
     m_pPipeline->setup();
 }
 
-void RenderPass::setupRayTracingPipeline(const std::string& raygenShaderPath, const std::string& missShaderPath, const std::string& closestHitShaderPath, const std::vector<AccelerationStructure>& blas, AccelerationStructure tlas) {
+void RenderPass::setupRayTracingPipeline(const std::string& raygenShaderPath, const std::string& missShaderPath, const std::string& closestHitShaderPath) {
     assert(m_pipelineType == PipelineType::eRayTracing);
 
     m_rayTracingProperties.raygenShaderPath = raygenShaderPath;
     m_rayTracingProperties.missShaderPath = missShaderPath;
     m_rayTracingProperties.closestHitShaderPath = closestHitShaderPath;
-    m_rayTracingProperties.blas = blas;
-    m_rayTracingProperties.tlas = tlas;
 
     m_pPipeline = std::make_unique<RayTracingPipeline>(m_pContext, m_renderPass, m_descriptorSetLayout, m_rayTracingProperties);
 

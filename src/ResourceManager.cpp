@@ -541,6 +541,79 @@ void copyBufferToImage(const VulkanContext& context, vk::CommandPool& commandPoo
     endSingleTimeCommands(context, commandPool, commandBuffer);
 }
 
+void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture& texture, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage, vk::PipelineStageFlags dstStage) {
+    vk::ImageMemoryBarrier barrier;
+
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = texture.image;
+
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    
+    if (newLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil;
+    }
+    else {
+        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    }
+
+    switch (oldLayout) {
+        case vk::ImageLayout::eUndefined:
+            barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+            break;
+        case vk::ImageLayout::eGeneral:
+            barrier.srcAccessMask = vk::AccessFlagBits::eNone;
+            break;
+        case vk::ImageLayout::eColorAttachmentOptimal:
+            barrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+            break;
+        case vk::ImageLayout::eShaderReadOnlyOptimal:
+            barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+            break;
+        case vk::ImageLayout::eTransferDstOptimal:
+            barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+            break;
+    }
+
+    switch (newLayout) {
+        case vk::ImageLayout::eShaderReadOnlyOptimal:
+            barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+            break;
+        case vk::ImageLayout::eGeneral:
+            barrier.dstAccessMask = vk::AccessFlagBits::eNone;
+            break;
+        case vk::ImageLayout::eColorAttachmentOptimal:
+            barrier.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+            break;
+        case vk::ImageLayout::eTransferDstOptimal:
+            barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+            break;
+        case vk::ImageLayout::eDepthAttachmentOptimal:
+        case vk::ImageLayout::eDepthStencilAttachmentOptimal:
+            barrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+            break;
+    }
+
+    texture.descriptorInfo.imageLayout = newLayout;
+
+    commandBuffer.pipelineBarrier(srcStage, dstStage, 
+                                 {},   
+                                 0, nullptr, 
+                                 0, nullptr,
+                                 1, &barrier);
+}
+
+void transitionImageLayout(const VulkanContext& context, vk::CommandPool& commandPool, Texture& texture, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage, vk::PipelineStageFlags dstStage) {
+    vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
+    transitionImageLayout(commandBuffer, texture, oldLayout, newLayout, srcStage, dstStage);
+    endSingleTimeCommands(context, commandPool, commandBuffer);
+}
+
 void transitionImageLayout(const VulkanContext& context, vk::CommandPool& commandPool, Texture& texture, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
 

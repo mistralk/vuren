@@ -37,13 +37,13 @@ layout(location = 2) out vec3 outPosWorld;
 layout(location = 3) out vec4 outNormalWorld;
 
 void main() {
-	vec4 pos = instanceWorld * vec4(inPosition, 1.0);
+	vec4 worldPos = instanceWorld * vec4(inPosition, 1.0);
 
 	// OpenGL uses post-multiplication (vector-on-the-right) with column-major matrix memory layout.
-	gl_Position = camera.proj * camera.view * pos;
+	gl_Position = camera.proj * camera.view * worldPos;
 
 	outColor = inNormal;
     outTexCoord = inTexCoord;
-	outPosWorld = pos.xyz;
+	outPosWorld = worldPos.xyz;
 	outNormalWorld = instanceInvTransposeWorld * vec4(inNormal, 0.0);
 }

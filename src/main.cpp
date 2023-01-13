@@ -85,12 +85,11 @@ public:
     void setup() override {
         m_pResourceManager->createTextureRGBA32Sfloat("RtColor");
         auto texture = m_pResourceManager->getTexture("RtColor");
-        transitionImageLayout(*m_pContext, m_commandPool, texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+        transitionImageLayout(*m_pContext, m_commandPool, texture, 
+                              vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 
+                              vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eRayTracingShaderKHR);
 
         kOffscreenOutputTextureNames.push_back("RtColor");
-
-        m_rayTracingProperties.blas = m_blas;
-        m_rayTracingProperties.tlas = m_tlas;
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
@@ -103,7 +102,7 @@ public:
         };
         createDescriptorSet(bindings);
 
-        setupRayTracingPipeline("shaders/rt.rgen.spv", "shaders/rt.rmiss.spv", "shaders/rt.rchit.spv", m_blas, m_tlas);
+        setupRayTracingPipeline("shaders/rt.rgen.spv", "shaders/rt.rmiss.spv", "shaders/rt.rchit.spv");
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
@@ -117,14 +116,14 @@ public:
         commandBuffer.pushConstants(m_pPipeline->getPipelineLayout(), vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR | vk::ShaderStageFlagBits::eMissKHR,
                                     0, sizeof(PushConstantRay), &m_pcRay);
 
-        commandBuffer.traceRaysKHR(&m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_extent.width, m_extent.height, 1);
+        commandBuffer.traceRaysKHR(&m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_extent.width, m_extent.height, 2);
     }
 
     void cleanup() {
         destroyBuffer(*m_pContext, m_sbtBuffer);
-        destroyBuffer(*m_pContext, m_tlas.buffer);
-        m_pContext->m_device.destroyAccelerationStructureKHR(m_tlas.as);
-        for (auto& blas : m_blas) {
+        destroyBuffer(*m_pContext, m_rayTracingProperties.tlas.buffer);
+        m_pContext->m_device.destroyAccelerationStructureKHR(m_rayTracingProperties.tlas.as);
+        for (auto& blas : m_rayTracingProperties.blas) {
             m_pContext->m_device.destroyAccelerationStructureKHR(blas.as);
             destroyBuffer(*m_pContext, blas.buffer);
         }
@@ -338,7 +337,7 @@ public:
         }
 
         for (auto& b : buildAs) {
-            m_blas.emplace_back(b.as);
+            m_rayTracingProperties.blas.emplace_back(b.as);
         }
 
         m_pContext->m_device.destroyQueryPool(queryPool, nullptr);
@@ -359,13 +358,13 @@ public:
     }
 
     void buildTlas(const std::vector<vk::AccelerationStructureInstanceKHR>& instances, vk::BuildAccelerationStructureFlagsKHR flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace, bool update = false) {
-        assert(m_tlas.as == vk::AccelerationStructureKHR{VK_NULL_HANDLE} || update);
+        assert(m_rayTracingProperties.tlas.as == vk::AccelerationStructureKHR{VK_NULL_HANDLE} || update);
         uint32_t instanceCount = static_cast<uint32_t>(instances.size());
 
         vk::CommandBuffer commandBuffer = beginSingleTimeCommands(*m_pContext, m_commandPool);;
 
         // caution: this is not the managed "InstanceBuffer"
-        Buffer instanceBuffer = createBuffer(*m_pContext, instanceCount * sizeof(vk::AccelerationStructureInstanceKHR), vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        Buffer instanceBuffer = m_pResourceManager->createBufferByHostData<vk::AccelerationStructureInstanceKHR>(instances, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
         vk::BufferDeviceAddressInfo addressInfo = { .buffer = instanceBuffer.descriptorInfo.buffer };
         vk::DeviceAddress instanceBufferAddress = m_pContext->m_device.getBufferAddress(&addressInfo);
 
@@ -403,7 +402,7 @@ public:
         };
 
         // create TLAS
-        createAs(*m_pContext, createInfo, m_tlas);
+        createAs(*m_pContext, createInfo, m_rayTracingProperties.tlas);
 
         // allocate the scratch memory
         Buffer scratchBuffer = createBuffer(*m_pContext, sizeInfo.buildScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -412,7 +411,7 @@ public:
 
         // update build information
         buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
-        buildInfo.dstAccelerationStructure = m_tlas.as;
+        buildInfo.dstAccelerationStructure = m_rayTracingProperties.tlas.as;
         buildInfo.scratchData.deviceAddress = scratchAddress;
 
         // build offsets info: n instances
@@ -439,23 +438,25 @@ public:
         tlas.reserve(instances.size());
         
         for (const ObjectInstance& instance : instances) {
-            // glm: column-major matrix
+            // glm transform: column-major matrix
+            // VkTransform: row-major matrix
+            // we need to transpose it.
             vk::TransformMatrixKHR transform = {
                 .matrix = { {
                     instance.world[0].x, instance.world[1].x, instance.world[2].x, instance.world[3].x,
-                    instance.world[1].y, instance.world[1].y, instance.world[2].y, instance.world[3].y,
+                    instance.world[0].y, instance.world[1].y, instance.world[2].y, instance.world[3].y,
                     instance.world[0].z, instance.world[1].z, instance.world[2].z, instance.world[3].z
                 } }
             };
 
             vk::DeviceAddress blasAddress;
             vk::AccelerationStructureDeviceAddressInfoKHR addressInfo = {
-                .accelerationStructure = m_blas[instance.objectId].as
+                .accelerationStructure = m_rayTracingProperties.blas[instance.objectId].as
             };
             blasAddress = m_pContext->m_device.getAccelerationStructureAddressKHR(addressInfo);
             
             vk::AccelerationStructureInstanceKHR rayInstance {
-                .transform = transform, // row-major matrix
+                .transform = transform, 
                 .instanceCustomIndex = instance.objectId,
                 .mask = 0xFF,
                 .instanceShaderBindingTableRecordOffset = 0,
@@ -545,8 +546,6 @@ private:
     PushConstantRay m_pcRay;
 
     vk::PhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProperties;
-    std::vector<AccelerationStructure> m_blas;
-    AccelerationStructure m_tlas;
 
     // SBT
     Buffer m_sbtBuffer;
@@ -1354,41 +1353,17 @@ private:
         updateUniformBuffer("CameraBuffer");
 
         if (kOffscreenOutputTextureNames[kCurrentItem] == "RtColor")
-            m_rtRenderPass.record(commandBuffer);
-        else 
+            m_rtRenderPass.record(commandBuffer);        
+        else
             m_offscreenRenderPass.record(commandBuffer);
 
-        vk::ImageMemoryBarrier barrier { 
-            .oldLayout = vk::ImageLayout::eGeneral, //rt eUndefined, // raster: eColorAttachmentOptimal,
-            .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]).image,
-            .subresourceRange = { 
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1 } 
-        };
+        auto outputTexture = m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]);
 
-        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-        barrier.srcAccessMask = vk::AccessFlagBits::eNone;//vk::AccessFlagBits::eColorAttachmentWrite;
-        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-        vk::PipelineStageFlags sourceStage = vk::PipelineStageFlagBits::eAllCommands;
-        vk::PipelineStageFlags destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
-        commandBuffer.pipelineBarrier(sourceStage, destinationStage, 
-                                      {},   
-                                      0, nullptr, 
-                                      0, nullptr,
-                                      1, &barrier);
-        
-        // commandBuffer.copyImage(m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]).image, // srcImage
-        //                         m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]).descriptorInfo.imageLayout, // srcImageLayout
-        //                         (*m_swapChainColorImages)[imageIndex], // dstImage,
-        //                         vk::ImageLayout::ePresentSrcKHR, // dstImageLayout
-        //                         {});
+        transitionImageLayout(commandBuffer, outputTexture, outputTexture.descriptorInfo.imageLayout, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlagBits::eFragmentShader);
 
         m_finalRenderPass.record(commandBuffer);
+
+        transitionImageLayout(commandBuffer, outputTexture, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eBottomOfPipe);
 
         try { 
             commandBuffer.end();
@@ -1528,12 +1503,14 @@ private:
         Camera ubo{};
         ubo.view = glm::lookAt(glm::vec3(3.0 * glm::cos(time * glm::radians(90.0f)), 3.0 * glm::sin(time * glm::radians(90.0f)), 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 10.0f);
-        ubo.invView = glm::inverse(ubo.view);
-        ubo.invProj = glm::inverse(ubo.proj);
 
         // GLM's Y coordinate of the clip coordinates is inverted
         // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.
         ubo.proj[1][1] *= -1;
+
+        // for camera ray generation
+        ubo.invView = glm::inverse(ubo.view);
+        ubo.invProj = glm::inverse(ubo.proj);
 
         memcpy(m_pResourceManager->getMappedBuffer(name), &ubo, sizeof(ubo));
     }

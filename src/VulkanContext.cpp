@@ -191,7 +191,8 @@ void VulkanContext::createLogicalDevice() {
         .rayTracingPipeline = VK_TRUE
     };
     vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT bufferAddressFeature {
-        .bufferDeviceAddress = VK_TRUE
+        .bufferDeviceAddress = VK_TRUE,
+        .bufferDeviceAddressCaptureReplay = VK_TRUE
     };
 
     vk::DeviceCreateInfo createInfo { 
@@ -208,17 +209,6 @@ void VulkanContext::createLogicalDevice() {
                     vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
                     vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT> chain = {createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature};
 
-    // vk::DeviceCreateInfo createInfo { 
-    //     // .pNext = &accelFeature,
-    //     .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-    //     .pQueueCreateInfos = queueCreateInfos.data(),
-    //     .enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size()),
-    //     .ppEnabledExtensionNames = kDeviceExtensions.data(),
-    //     .pEnabledFeatures = &deviceFeatures 
-    // };
-
-    // vk::StructureChain<vk::DeviceCreateInfo> chain = {createInfo};
-
     if (kEnableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());
         createInfo.ppEnabledLayerNames = kValidationLayers.data();
@@ -228,10 +218,6 @@ void VulkanContext::createLogicalDevice() {
     }
 
     m_device = m_physicalDevice.createDevice(chain.get<vk::DeviceCreateInfo>(), nullptr);
-
-    // if (m_physicalDevice.createDevice(&createInfo, nullptr, &m_device) != vk::Result::eSuccess) {
-    //     throw std::runtime_error("failed to create logical device!");
-    // }
 
     #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);

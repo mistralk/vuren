@@ -59,6 +59,10 @@ void copyBuffer(const VulkanContext& context, vk::CommandPool& commandPool, vk::
 
 void copyBufferToImage(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
 
+void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture& texture, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage = vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlags dstStage = vk::PipelineStageFlagBits::eAllCommands);
+
+void transitionImageLayout(const VulkanContext& context, vk::CommandPool& commandPool, Texture& texture, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage = vk::PipelineStageFlagBits::eAllCommands, vk::PipelineStageFlags dstStage = vk::PipelineStageFlagBits::eAllCommands);
+
 void transitionImageLayout(const VulkanContext& context, vk::CommandPool& commandPool, Texture& texture, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
 
 void createAs(const VulkanContext& context, vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure& as);
@@ -78,6 +82,35 @@ public:
     void createVertexBuffer(const std::string& name, const std::vector<Vertex>& vertices);
     void createIndexBuffer(const std::string& name, const std::vector<uint32_t>& indices);
     void createUniformBuffer(const std::string& name);
+
+    template <typename DataType>
+    Buffer createBufferByHostData(const std::vector<DataType>& hostData, vk::BufferUsageFlags bufferUsage, vk::MemoryPropertyFlags memoryProperty) {
+        vk::DeviceSize bufferSize = sizeof(hostData[0]) * hostData.size();
+    
+        vk::Buffer stagingBuffer;
+        vk::DeviceMemory stagingBufferMemory;
+        createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+        void* data;
+        data = m_pContext->m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
+            memcpy(data, hostData.data(), (size_t)bufferSize);
+        m_pContext->m_device.unmapMemory(stagingBufferMemory);
+
+        vk::Buffer buffer;
+        vk::DeviceMemory memory;
+        createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | bufferUsage, memoryProperty, buffer, memory);
+
+        copyBuffer(*m_pContext, m_commandPool, stagingBuffer, buffer, bufferSize);
+
+        m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
+        m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
+
+        Buffer bufferObject;
+        bufferObject.descriptorInfo.buffer = buffer;
+        bufferObject.memory = memory;
+
+        return bufferObject;
+    }
 
     SceneObject loadObjModel(const std::string& name, const std::string& filename);
 
