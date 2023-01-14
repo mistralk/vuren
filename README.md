@@ -22,11 +22,15 @@ Currently it has only been tested on Ubuntu 22.04.
 - [ ] Ray-traced G-buffer rendering pass template
 - [ ] Reference unbiased path tracer
 
-## External libraries
+## Licenses
 
+External libraries
 - [stb](https://github.com/nothings/stb) for image I/O (public domain)
-- [Dear ImGui](https://github.com/ocornut/imgui) for GUI (MIT license)
-- [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) for OBJ data loading (MIT license)
+- [Dear ImGui](https://github.com/ocornut/imgui) for GUI (The MIT license)
+- [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) for OBJ data loading (The MIT license)
+
+Assets
+- [Viking room](https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38) model by nigelgoh (CC BY 4.0) [tweaked](https://vulkan-tutorial.com/Loading_models) by Alexander Overvoorde
 
 ## Good references and resources
 

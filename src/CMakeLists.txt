@@ -4,6 +4,8 @@ target_sources(vulkan_render_base PRIVATE
     VulkanContext.cpp
     Utils.hpp
     Utils.cpp
+    ResourceManager.hpp
+    ResourceManager.cpp
     Scene.hpp
     Scene.cpp
     Pipeline.hpp
@@ -12,7 +14,5 @@ target_sources(vulkan_render_base PRIVATE
     RenderPass.cpp
     Timer.hpp
     Timer.cpp
-    ResourceManager.hpp
-    ResourceManager.cpp
     main.cpp
 )

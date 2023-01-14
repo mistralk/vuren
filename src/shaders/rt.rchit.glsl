@@ -3,7 +3,7 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-#include "ShaderCommon.glsl"
+#include "ShaderCommon.h"
 
 layout(location = 0) rayPayloadInEXT HitPayload payload;
 hitAttributeEXT IntersectionAttribute attribs;

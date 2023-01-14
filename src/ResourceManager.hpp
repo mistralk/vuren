@@ -7,13 +7,11 @@
 
 #include "VulkanContext.hpp"
 #include "Common.hpp"
-#include "Scene.hpp"
-
-
 
 namespace vrb {
 
 struct Texture {
+    std::string name;
     vk::Image image {VK_NULL_HANDLE};
     vk::DeviceMemory memory {VK_NULL_HANDLE};
     vk::DescriptorImageInfo descriptorInfo {VK_NULL_HANDLE};
@@ -58,7 +56,7 @@ public:
 
     void createTextureRGBA32Sfloat(const std::string& name);
     void createDepthTexture(const std::string& name);
-    void createModelTexture(const std::string& name, const std::string& filename);
+    Texture createModelTexture(const std::string& name, const std::string& filename);
     void createModelTextureSampler(Texture& texture);
 
     SceneObject loadObjModel(const std::string& name, const std::string& filename);

@@ -26,6 +26,10 @@ public:
         return m_instances;
     }
 
+    const std::vector<Texture>& getTextures() {
+        return m_textures;
+    }
+
     void addObject(SceneObject object) {
         m_objects.push_back(object);
     }
@@ -34,19 +38,14 @@ public:
         m_instances.push_back(instance);
     }
 
-    // uint32_t getInstanceCount() {
-    //     return m_instanceCount;
-    // }
-
-    // void setInstanceCount(uint32_t instanceCount) {
-    //     m_instanceCount = instanceCount;
-    // }
+    void addTexture(Texture texture) {
+        m_textures.push_back(texture);
+    }
 
 private:
     std::vector<SceneObject> m_objects;
     std::vector<ObjectInstance> m_instances;
-
-    // uint32_t m_instanceCount;
+    std::vector<Texture> m_textures;
 
 };
 

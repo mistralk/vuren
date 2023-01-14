@@ -4,7 +4,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #include "../Common.hpp"
-#include "ShaderCommon.glsl"
+#include "ShaderCommon.h"
 
 layout(location = 0) rayPayloadInEXT HitPayload payload;
 

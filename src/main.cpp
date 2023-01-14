@@ -590,10 +590,16 @@ public:
         kOffscreenOutputTextureNames.push_back("RasterNormalWorld");
 
         // create a descriptor set
-        std::vector<ResourceBindingInfo> bindings = {
-            {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex},
-            {"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
-        };
+        std::vector<ResourceBindingInfo> bindings;
+        
+        // uniform buffers
+        bindings.push_back({"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex});
+
+        // model textures
+        for (auto& texture : m_pScene->getTextures()) {
+            bindings.push_back({texture.name, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment});
+        }
+
         createDescriptorSet(bindings);
 
         // create framebuffers for the attachments
@@ -1088,7 +1094,10 @@ private:
         m_pResourceManager->setCommandPool(m_commandPool);
 
         m_pResourceManager->createUniformBuffer<Camera>("CameraBuffer");
-        m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
+        auto texture = m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
+        auto texture1 = m_pResourceManager->createModelTexture("ModelTexture1", "textures/texture.jpg");
+        m_pScene->addTexture(texture);
+        m_pScene->addTexture(texture1);
         auto object = m_pResourceManager->loadObjModel("Room", "models/viking_room.obj");
         m_pScene->addObject(object);
 

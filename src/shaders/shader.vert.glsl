@@ -3,7 +3,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #include "../Common.hpp"
-#include "ShaderCommon.glsl"
+#include "ShaderCommon.h"
 
 // camera data
 layout(binding = 0) uniform _Camera {
@@ -38,10 +38,6 @@ void main() {
 
 	// OpenGL uses post-multiplication (vector-on-the-right) with column-major matrix memory layout.
 	gl_Position = camera.proj * camera.view * worldPos;
-
-    // outTexCoord = inTexCoord;
-	// outPosWorld = worldPos.xyz;
-	// outNormalWorld = instanceInvTransposeWorld * vec4(inNormal, 0.0);
 
 	outHitData.worldPos = worldPos.xyz;
 	outHitData.shadingNormal = (instanceInvTransposeWorld * vec4(inNormal, 0.0)).xyz;

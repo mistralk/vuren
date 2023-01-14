@@ -37,7 +37,7 @@ set(GLSLANG_VALIDATOR "glslangValidator")
 file(GLOB_RECURSE GLSL_SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/shaders/*.glsl")
 
 foreach(GLSL_SOURCE_FILE ${GLSL_SOURCE_FILES})
-    # message(STATUS "Load shader: ${GLSL_SOURCE_FILE}")
+    message(STATUS "Load shader: ${GLSL_SOURCE_FILE}")
     get_filename_component(STEM ${GLSL_SOURCE_FILE} NAME_WLE)
     set(SPIRV_OUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/${STEM}.spv")
     

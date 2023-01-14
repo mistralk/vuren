@@ -30,6 +30,8 @@ void ResourceManager::createTextureRGBA32Sfloat(const std::string& name) {
     if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
         throw std::runtime_error("same key already exists in texture dictionary!");
     
+    texture.name = name;
+    
     m_globalTextureDict.insert({name, texture});
 }
 
@@ -42,10 +44,12 @@ void ResourceManager::createDepthTexture(const std::string& name) {
     if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
         throw std::runtime_error("same depth key already exists in texture dictionary!");
 
+    depthTexture.name = name;
+
     m_globalTextureDict.insert({name, depthTexture});
 }
 
-void ResourceManager::createModelTexture(const std::string& name, const std::string& filename) {
+Texture ResourceManager::createModelTexture(const std::string& name, const std::string& filename) {
     int texWidth, texHeight, texChannels;
     stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     vk::DeviceSize imageSize = texWidth * texHeight * 4;
@@ -82,7 +86,11 @@ void ResourceManager::createModelTexture(const std::string& name, const std::str
     createImageView(modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
     createModelTextureSampler(modelTexture);
 
+    modelTexture.name = name;
+
     m_globalTextureDict.insert({name, modelTexture});
+
+    return modelTexture;
 }
 
 void ResourceManager::createModelTextureSampler(Texture& texture) {
