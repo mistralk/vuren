@@ -29,10 +29,6 @@ struct AccelerationStructure {
     Buffer buffer;
 };
 
-void destroyTexture(const VulkanContext& context, Texture& texture);
-
-void destroyBuffer(const VulkanContext& context, Buffer& buffer);
-
 bool hasStencilComponent(vk::Format format);
 
 vk::Format findSupportedFormat(const VulkanContext& context, const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
@@ -45,16 +41,6 @@ vk::CommandBuffer beginSingleTimeCommands(const VulkanContext& context, vk::Comm
 
 void endSingleTimeCommands(const VulkanContext& context, vk::CommandPool& commandPool, vk::CommandBuffer commandBuffer);
 
-void createImage(const VulkanContext& context, Texture& texture, uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
-
-void createImageView(const VulkanContext& context, Texture& texture, vk::Format format, vk::ImageAspectFlags aspectFlags);
-
-void createSampler(const VulkanContext& context, Texture& texture);
-
-Buffer createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
-
-void createBuffer(const VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& memory);
-
 void copyBuffer(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer srcBuffer, vk::Buffer dstBuffer, vk::DeviceSize size);
 
 void copyBufferToImage(const VulkanContext& context, vk::CommandPool& commandPool, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
@@ -65,11 +51,6 @@ void transitionImageLayout(const VulkanContext& context, vk::CommandPool& comman
 
 void transitionImageLayout(const VulkanContext& context, vk::CommandPool& commandPool, Texture& texture, vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
 
-void createAs(const VulkanContext& context, vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure& as);
-
-void destroyAs(const VulkanContext& context, AccelerationStructure& as);
-
-
 class ResourceManager {
 public:
     ResourceManager(VulkanContext* pContext);
@@ -79,40 +60,81 @@ public:
     void createDepthTexture(const std::string& name);
     void createModelTexture(const std::string& name, const std::string& filename);
     void createModelTextureSampler(Texture& texture);
-    void createVertexBuffer(const std::string& name, const std::vector<Vertex>& vertices);
-    void createIndexBuffer(const std::string& name, const std::vector<uint32_t>& indices);
-    void createUniformBuffer(const std::string& name);
-
-    template <typename DataType>
-    Buffer createBufferByHostData(const std::vector<DataType>& hostData, vk::BufferUsageFlags bufferUsage, vk::MemoryPropertyFlags memoryProperty) {
-        vk::DeviceSize bufferSize = sizeof(hostData[0]) * hostData.size();
-    
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
-
-        void* data;
-        data = m_pContext->m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
-            memcpy(data, hostData.data(), (size_t)bufferSize);
-        m_pContext->m_device.unmapMemory(stagingBufferMemory);
-
-        vk::Buffer buffer;
-        vk::DeviceMemory memory;
-        createBuffer(*m_pContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | bufferUsage, memoryProperty, buffer, memory);
-
-        copyBuffer(*m_pContext, m_commandPool, stagingBuffer, buffer, bufferSize);
-
-        m_pContext->m_device.destroyBuffer(stagingBuffer, nullptr);
-        m_pContext->m_device.freeMemory(stagingBufferMemory, nullptr);
-
-        Buffer bufferObject;
-        bufferObject.descriptorInfo.buffer = buffer;
-        bufferObject.memory = memory;
-
-        return bufferObject;
-    }
 
     SceneObject loadObjModel(const std::string& name, const std::string& filename);
+    void createAs(vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure& as);
+    void destroyAs(AccelerationStructure& as);
+
+    Texture createTexture(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
+    void createImageView(Texture& texture, vk::Format format, vk::ImageAspectFlags aspectFlags);
+    void createSampler(Texture& texture);
+
+    Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
+    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::Buffer& buffer, vk::DeviceMemory& memory);
+    void destroyTexture(Texture& texture);
+    void destroyBuffer(Buffer& buffer);
+
+    Buffer createVertexBuffer(const std::string& name, const std::vector<Vertex>& vertices) {
+        vk::BufferUsageFlags bufferUsage = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
+                                         | vk::BufferUsageFlagBits::eStorageBuffer
+                                         | vk::BufferUsageFlagBits::eTransferDst 
+                                         | vk::BufferUsageFlagBits::eVertexBuffer 
+                                         | vk::BufferUsageFlagBits::eShaderDeviceAddress;
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+        Buffer buffer = createBufferByHostData<Vertex>(vertices, bufferUsage, memoryProperty, name);
+        return buffer;
+    }
+
+    Buffer createIndexBuffer(const std::string& name, const std::vector<uint32_t>& indices) {
+        vk::BufferUsageFlags bufferUsage = vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR
+                                         | vk::BufferUsageFlagBits::eStorageBuffer
+                                         | vk::BufferUsageFlagBits::eTransferDst 
+                                         | vk::BufferUsageFlagBits::eIndexBuffer
+                                         | vk::BufferUsageFlagBits::eShaderDeviceAddress;
+        vk::MemoryPropertyFlags memoryProperty = vk::MemoryPropertyFlagBits::eDeviceLocal;
+        Buffer buffer = createBufferByHostData<uint32_t>(indices, bufferUsage, memoryProperty, name);
+        return buffer;
+    }
+
+    template <typename DataType>
+    void createUniformBuffer(const std::string& name) {
+        vk::DeviceSize bufferSize = sizeof(DataType);
+
+        Buffer uniformBuffer = createBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+        void* mapped;
+        mapped = m_pContext->m_device.mapMemory(uniformBuffer.memory, 0, bufferSize);
+
+        m_uniformBufferMappedDict.insert({name, mapped});
+        m_globalBufferDict.insert({name, uniformBuffer});
+    }
+
+    // if name is not given, the returned buffer will not be managed by resource manager.
+    // in that case, user must manually destroy the buffer after use.
+    template <typename DataType>
+    Buffer createBufferByHostData(const std::vector<DataType>& hostData, vk::BufferUsageFlags bufferUsage, vk::MemoryPropertyFlags memoryProperty, const std::string& name = "") {
+        vk::DeviceSize bufferSize = sizeof(hostData[0]) * hostData.size();
+    
+        Buffer stagingBuffer = createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+        void* data;
+        data = m_pContext->m_device.mapMemory(stagingBuffer.memory, 0, bufferSize);
+            memcpy(data, hostData.data(), (size_t)bufferSize);
+        m_pContext->m_device.unmapMemory(stagingBuffer.memory);
+
+        Buffer newBuffer;
+        newBuffer = createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | bufferUsage, memoryProperty);
+
+        copyBuffer(*m_pContext, m_commandPool, stagingBuffer.descriptorInfo.buffer, newBuffer.descriptorInfo.buffer, bufferSize);
+
+        destroyBuffer(stagingBuffer);
+
+        // the buffer has name and will be managed by resource manager.
+        if (!name.empty())
+            m_globalBufferDict.insert({name, newBuffer});
+
+        return newBuffer;
+    }
 
     void destroyTextures();
     void destroyBuffers();
@@ -120,9 +142,24 @@ public:
     void setExtent(vk::Extent2D extent);
     void setCommandPool(vk::CommandPool commandPool);
 
-    Texture getTexture(const std::string& name);
-    Buffer getBuffer(const std::string& name);
-    void* getMappedBuffer(const std::string& name);
+    Texture getTexture(const std::string& name) {
+        if (m_globalTextureDict.find(name) == m_globalTextureDict.end())
+            throw std::runtime_error("failed to find the texture!");
+        return m_globalTextureDict[name];
+    }
+
+    Buffer getBuffer(const std::string& name) {
+        if (m_globalBufferDict.find(name) == m_globalBufferDict.end())
+            throw std::runtime_error("failed to find the buffer!");
+        return m_globalBufferDict[name];
+    }
+
+    void* getMappedBuffer(const std::string& name) {
+        if (m_uniformBufferMappedDict.find(name) == m_uniformBufferMappedDict.end())
+            throw std::runtime_error("failed to find the mapped buffer!");
+        return m_uniformBufferMappedDict[name];
+    }
+
     const std::unordered_map<std::string, Texture>& getTextureDict() {
         return m_globalTextureDict;
     }

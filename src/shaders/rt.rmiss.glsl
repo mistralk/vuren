@@ -4,12 +4,9 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #include "../Common.hpp"
+#include "ShaderCommon.glsl"
 
-struct hitPayload {
-    vec3 hitValue;
-};
-
-layout(location = 0) rayPayloadInEXT hitPayload payload;
+layout(location = 0) rayPayloadInEXT HitPayload payload;
 
 layout(push_constant) uniform _PushConstantRay {
     PushConstantRay pcRay;

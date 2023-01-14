@@ -133,12 +133,12 @@ public:
     }
 
     void cleanup() {
-        destroyBuffer(*m_pContext, m_sbtBuffer);
-        destroyBuffer(*m_pContext, m_rayTracingProperties.tlas.buffer);
+        m_pResourceManager->destroyBuffer(m_sbtBuffer);
+        m_pResourceManager->destroyBuffer(m_rayTracingProperties.tlas.buffer);
         m_pContext->m_device.destroyAccelerationStructureKHR(m_rayTracingProperties.tlas.as);
         for (auto& blas : m_rayTracingProperties.blas) {
             m_pContext->m_device.destroyAccelerationStructureKHR(blas.as);
-            destroyBuffer(*m_pContext, blas.buffer);
+            m_pResourceManager->destroyBuffer(blas.buffer);
         }
         RenderPass::cleanup();
     }
@@ -223,7 +223,7 @@ public:
         }
 
         // allocate the "largest" scratch buffer holding the temporary data of the acceleration structure builder
-        Buffer scratchBuffer = createBuffer(*m_pContext, maxScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        Buffer scratchBuffer = m_pResourceManager->createBuffer(maxScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
         vk::BufferDeviceAddressInfo scratchBufferAddressInfo = { .buffer = scratchBuffer.descriptorInfo.buffer };
         vk::DeviceAddress scratchAddress = m_pContext->m_device.getBufferAddress(scratchBufferAddressInfo);
 
@@ -266,7 +266,7 @@ public:
                     };
 
                     AccelerationStructure as;
-                    createAs(*m_pContext, createInfo, as);
+                    m_pResourceManager->createAs(createInfo, as);
                     buildAs[j].as = as;
                     buildAs[j].buildInfo.dstAccelerationStructure = buildAs[j].as.as;
                     buildAs[j].buildInfo.scratchData.deviceAddress = scratchAddress;
@@ -317,7 +317,7 @@ public:
                             .size = buildAs[idx].sizeInfo.accelerationStructureSize,
                             .type = vk::AccelerationStructureTypeKHR::eBottomLevel
                         };
-                        createAs(*m_pContext, asCreateInfo, buildAs[idx].as);
+                        m_pResourceManager->createAs(asCreateInfo, buildAs[idx].as);
 
                         // copy the original BLAS to a compact version
                         vk::CopyAccelerationStructureInfoKHR copyInfo {
@@ -333,7 +333,7 @@ public:
 
                     // destroyNonCompacted
                     for (auto& i : indices) {
-                        destroyAs(*m_pContext, buildAs[i].cleanupAs);
+                        m_pResourceManager->destroyAs(buildAs[i].cleanupAs);
                     }
                 }
 
@@ -347,7 +347,7 @@ public:
         }
 
         m_pContext->m_device.destroyQueryPool(queryPool, nullptr);
-        destroyBuffer(*m_pContext, scratchBuffer);
+        m_pResourceManager->destroyBuffer(scratchBuffer);
     }
 
     void createBlas() {
@@ -408,10 +408,10 @@ public:
         };
 
         // create TLAS
-        createAs(*m_pContext, createInfo, m_rayTracingProperties.tlas);
+        m_pResourceManager->createAs(createInfo, m_rayTracingProperties.tlas);
 
         // allocate the scratch memory
-        Buffer scratchBuffer = createBuffer(*m_pContext, sizeInfo.buildScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        Buffer scratchBuffer = m_pResourceManager->createBuffer(sizeInfo.buildScratchSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
         vk::BufferDeviceAddressInfo scratchBufferAddressInfo = { .buffer = scratchBuffer.descriptorInfo.buffer };
         vk::DeviceAddress scratchAddress = m_pContext->m_device.getBufferAddress(scratchBufferAddressInfo);
 
@@ -434,8 +434,8 @@ public:
         commandBuffer.buildAccelerationStructuresKHR(1, &buildInfo, &pOffsetInfo);
 
         endSingleTimeCommands(*m_pContext, m_commandPool, commandBuffer);
-        destroyBuffer(*m_pContext, scratchBuffer);
-        destroyBuffer(*m_pContext, instanceBuffer);
+        m_pResourceManager->destroyBuffer(scratchBuffer);
+        m_pResourceManager->destroyBuffer(instanceBuffer);
     }
 
     void createTlas(const std::vector<ObjectInstance>& instances) {
@@ -505,7 +505,7 @@ public:
 
         // allocate a butter for holding the handle data
         vk::DeviceSize sbtSize = m_rgenRegion.size + m_missRegion.size + m_hitRegion.size + m_callRegion.size;
-        m_sbtBuffer = createBuffer(*m_pContext, sbtSize, 
+        m_sbtBuffer = m_pResourceManager->createBuffer(sbtSize, 
                                    vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eShaderBindingTableKHR,
                                    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
         
@@ -1087,7 +1087,7 @@ private:
         createCommandPool();
         m_pResourceManager->setCommandPool(m_commandPool);
 
-        m_pResourceManager->createUniformBuffer("CameraBuffer");
+        m_pResourceManager->createUniformBuffer<Camera>("CameraBuffer");
         m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
         auto object = m_pResourceManager->loadObjModel("Room", "models/viking_room.obj");
         m_pScene->addObject(object);
@@ -1168,34 +1168,25 @@ private:
             m_pScene->addInstance(instance);
         }
 
-        Buffer buffer;
-
         vk::DeviceSize bufferSize = m_pScene->getInstances().size() * sizeof(ObjectInstance);
 
         // staging buffer
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+        Buffer stagingBuffer = m_pResourceManager->createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
         void* data;
-        data = m_vkContext.m_device.mapMemory(stagingBufferMemory, 0, bufferSize);
+        data = m_vkContext.m_device.mapMemory(stagingBuffer.memory, 0, bufferSize);
             memcpy(data, m_pScene->getInstances().data(), (size_t)bufferSize);
-        m_vkContext.m_device.unmapMemory(stagingBufferMemory);
+        m_vkContext.m_device.unmapMemory(stagingBuffer.memory);
 
         // instance buffer
-        vk::Buffer instanceBuffer;
-        vk::DeviceMemory instanceBufferMemory;
-        createBuffer(m_vkContext, bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal, instanceBuffer, instanceBufferMemory);
+        Buffer instanceBuffer = m_pResourceManager->createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
         // copy to staging buffer
-        copyBuffer(m_vkContext, m_commandPool, stagingBuffer, instanceBuffer, bufferSize);
+        copyBuffer(m_vkContext, m_commandPool, stagingBuffer.descriptorInfo.buffer, instanceBuffer.descriptorInfo.buffer, bufferSize);
 
-        m_vkContext.m_device.destroyBuffer(stagingBuffer, nullptr);
-        m_vkContext.m_device.freeMemory(stagingBufferMemory, nullptr);
+        m_pResourceManager->destroyBuffer(stagingBuffer);
 
-        buffer.descriptorInfo.buffer = instanceBuffer;
-        buffer.memory = instanceBufferMemory;
-        m_pResourceManager->insertBuffer("InstanceBuffer", buffer);
+        m_pResourceManager->insertBuffer("InstanceBuffer", instanceBuffer);
     }
 
     void createSwapChain() {

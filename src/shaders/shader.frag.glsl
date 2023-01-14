@@ -1,19 +1,21 @@
 #version 460
-// #extension GL_EXT_debug_printf : enable
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
+#include "ShaderCommon.glsl"
+
+// input from descriptor set
 layout(binding = 1) uniform sampler2D texSampler;
 
-layout(location = 0) in vec3 inColor;
-layout(location = 1) in vec2 inTexCoord;
-layout(location = 2) in vec3 inPosWorld;
-layout(location = 3) in vec4 inNormalWorld;
+// input from vertex shader
+layout(location = 0) in SurfaceHit inHitData;
 
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outPosWorld;
 layout(location = 2) out vec4 outNormalWorld;
 
 void main() {
-    outColor = texture(texSampler, inTexCoord);
-    outPosWorld = vec4(inPosWorld, 0.0);
-    outNormalWorld = inNormalWorld;
+    outColor = texture(texSampler, inHitData.texCoord);
+    outPosWorld = vec4(inHitData.worldPos, 0.0);
+    outNormalWorld = vec4(inHitData.shadingNormal, 0.0);
 }
