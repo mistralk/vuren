@@ -101,12 +101,12 @@ public:
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
-            {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eRaygenKHR},
-            {"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR},
-            {"Room_vertexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR},
-            {"Room_indexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR},
-            {"RtColor", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR}, // for ray tracing, writing to output image will be manually called by shader
-            {"Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR} // name doesn't matter for AS
+            {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eRaygenKHR, 1}, 
+            {"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, static_cast<uint32_t>(m_pScene->getTextures().size())},
+            {"Room_vertexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, 1},
+            {"Room_indexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, 1},
+            {"RtColor", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1}, // for ray tracing, writing to output image will be manually called by shader
+            {"Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR, 1} // name doesn't matter for AS
         };
         createDescriptorSet(bindings);
 
@@ -593,12 +593,9 @@ public:
         std::vector<ResourceBindingInfo> bindings;
         
         // uniform buffers
-        bindings.push_back({"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex});
-
+        bindings.push_back({"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1});
         // model textures
-        for (auto& texture : m_pScene->getTextures()) {
-            bindings.push_back({texture.name, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment});
-        }
+        bindings.push_back({"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, static_cast<uint32_t>(m_pScene->getTextures().size())});
 
         createDescriptorSet(bindings);
 
@@ -748,7 +745,7 @@ public:
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
-            {kOffscreenOutputTextureNames[kCurrentItem], vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment}
+            {kOffscreenOutputTextureNames[kCurrentItem], vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1}
         };
         createDescriptorSet(bindings);
 
@@ -1095,9 +1092,9 @@ private:
 
         m_pResourceManager->createUniformBuffer<Camera>("CameraBuffer");
         auto texture = m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
-        auto texture1 = m_pResourceManager->createModelTexture("ModelTexture1", "textures/texture.jpg");
         m_pScene->addTexture(texture);
-        m_pScene->addTexture(texture1);
+        // auto texture1 = m_pResourceManager->createModelTexture("ModelTexture1", "textures/texture.jpg");
+        // m_pScene->addTexture(texture1);
         auto object = m_pResourceManager->loadObjModel("Room", "models/viking_room.obj");
         m_pScene->addObject(object);
 

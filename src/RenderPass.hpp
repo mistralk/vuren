@@ -31,6 +31,7 @@ public:
         std::string name;
         vk::DescriptorType descriptorType;
         vk::ShaderStageFlags stageFlags;
+        uint32_t descriptorCount;
     };
 
     struct AttachmentInfo {

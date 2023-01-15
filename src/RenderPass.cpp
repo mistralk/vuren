@@ -133,18 +133,21 @@ void RenderPass::createFramebuffer(const std::vector<AttachmentInfo>& colorAttac
 
 void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bindingInfos) {
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    uint32_t totalDescriptorCount = 0;
 
     // create a descriptor set
     for (const auto& binding : bindingInfos) {
         vk::DescriptorSetLayoutBinding layoutBinding { 
             .binding = static_cast<uint32_t>(bindings.size()),
             .descriptorType = binding.descriptorType,
-            .descriptorCount = 1,
+            .descriptorCount = binding.descriptorCount,
             .stageFlags = binding.stageFlags,
             .pImmutableSamplers = nullptr
         };
 
         bindings.push_back(layoutBinding);
+
+        totalDescriptorCount += binding.descriptorCount;
     }
 
     vk::DescriptorSetLayoutCreateInfo layoutInfo { 
@@ -184,18 +187,20 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
         throw std::runtime_error("failed to allocate offscreen descriptor sets!");
     }
 
-    // TO FIX: weird vectors... do i really need it?
-    std::vector<vk::DescriptorImageInfo> tempImageInfos; 
-    std::vector<vk::DescriptorBufferInfo> tempBufferInfos; 
-    tempImageInfos.resize(bindings.size());
-    tempBufferInfos.resize(bindings.size());
-
     std::vector<vk::WriteDescriptorSet> descriptorWrites;
+    std::vector<vk::DescriptorBufferInfo> bufferInfos;
+    std::vector<vk::DescriptorImageInfo> imageInfos;
+
+    bufferInfos.reserve(totalDescriptorCount);
+    imageInfos.reserve(totalDescriptorCount);
 
     for (size_t i = 0; i < bindings.size(); ++i) {
-        vk::WriteDescriptorSet bufferWrite;
-        vk::DescriptorBufferInfo* pBufferInfo = nullptr;
-        vk::DescriptorImageInfo* pImageInfo = nullptr;
+        vk::WriteDescriptorSet write;
+        vk::DescriptorBufferInfo bufferInfo;
+        vk::DescriptorImageInfo imageInfo;
+
+        write.pImageInfo = nullptr;
+        write.pBufferInfo = nullptr;
 
         if (bindings[i].descriptorType == vk::DescriptorType::eAccelerationStructureKHR) {
             vk::AccelerationStructureKHR tlas = m_rayTracingProperties.tlas.as;
@@ -204,61 +209,56 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
                 .pAccelerationStructures = &tlas
             };
             
-            bufferWrite.pNext = (void*)&descriptorSetAsInfo;
-            bufferWrite.dstSet = m_descriptorSet;
-            bufferWrite.dstBinding = static_cast<uint32_t>(i);
-            bufferWrite.dstArrayElement = 0;
-            bufferWrite.descriptorCount = 1;
-            bufferWrite.descriptorType = bindings[i].descriptorType;
-            bufferWrite.pImageInfo = nullptr;
-            bufferWrite.pBufferInfo = nullptr;
-            bufferWrite.pTexelBufferView = nullptr;
+            write.pNext = (void*)&descriptorSetAsInfo;
+            write.dstSet = m_descriptorSet;
+            write.dstBinding = static_cast<uint32_t>(i);
+            write.dstArrayElement = 0;
+            write.descriptorCount = 1;
+            write.descriptorType = bindings[i].descriptorType;
+            write.pTexelBufferView = nullptr;
         }
+
         else {
             switch (bindings[i].descriptorType) {
                 case vk::DescriptorType::eCombinedImageSampler:
-                    tempImageInfos[i].sampler = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.sampler;
-                    tempImageInfos[i].imageView = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.imageView;
-                    tempImageInfos[i].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                    pImageInfo = &tempImageInfos[i];
-                    break;
-                
-                case vk::DescriptorType::eUniformBuffer:
-                    tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
-                    tempBufferInfos[i].offset = 0;
-                    tempBufferInfos[i].range = sizeof(Camera);
-                    pBufferInfo = &tempBufferInfos[i];
-                    break;
-
-                case vk::DescriptorType::eStorageBuffer:
-                    tempBufferInfos[i].buffer = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo.buffer;
-                    tempBufferInfos[i].offset = 0;
-                    tempBufferInfos[i].range = VK_WHOLE_SIZE;
-                    pBufferInfo = &tempBufferInfos[i];
+                    imageInfo = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
                     break;
                 
                 case vk::DescriptorType::eStorageImage:
-                    tempImageInfos[i].sampler = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.sampler;
-                    tempImageInfos[i].imageView = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo.imageView;
-                    tempImageInfos[i].imageLayout = vk::ImageLayout::eGeneral;
-                    pImageInfo = &tempImageInfos[i];
+                    imageInfo = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                    imageInfo.imageLayout = vk::ImageLayout::eGeneral;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    break;
+                
+                case vk::DescriptorType::eUniformBuffer:
+                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
+                    bufferInfos.push_back(bufferInfo);
+                    write.pBufferInfo = &bufferInfos.back();
+                    break;
+
+                case vk::DescriptorType::eStorageBuffer:
+                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
+                    bufferInfos.push_back(bufferInfo);
+                    write.pBufferInfo = &bufferInfos.back();
                     break;
 
                 default:
                     throw std::runtime_error("unsupported descriptor type!"); 
             }
 
-            bufferWrite.dstSet = m_descriptorSet;
-            bufferWrite.dstBinding = static_cast<uint32_t>(i);
-            bufferWrite.dstArrayElement = 0;
-            bufferWrite.descriptorCount = 1;
-            bufferWrite.descriptorType = bindings[i].descriptorType;
-            bufferWrite.pImageInfo = pImageInfo;
-            bufferWrite.pBufferInfo = pBufferInfo;
-            bufferWrite.pTexelBufferView = nullptr;
+            write.dstSet = m_descriptorSet;
+            write.dstBinding = static_cast<uint32_t>(i);
+            write.dstArrayElement = 0;
+            write.descriptorCount = 1;
+            write.descriptorType = bindings[i].descriptorType;
+            write.pTexelBufferView = nullptr;
         }
 
-        descriptorWrites.push_back(bufferWrite);
+        descriptorWrites.push_back(write);
     }
     
     m_pContext->m_device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);

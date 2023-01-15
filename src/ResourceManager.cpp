@@ -211,6 +211,8 @@ Buffer ResourceManager::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags u
     Buffer bufferObject;
     bufferObject.memory = memory;
     bufferObject.descriptorInfo.buffer = buffer;
+    bufferObject.descriptorInfo.offset = 0;
+    bufferObject.descriptorInfo.range = size;
 
     return bufferObject;
 }
