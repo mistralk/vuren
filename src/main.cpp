@@ -48,15 +48,13 @@ std::vector<std::string> kOffscreenOutputTextureNames;
 int kCurrentItem = 0;
 bool kDirty = false;
 
-const uint32_t kInstanceCount = 10;
-
-class RayTracingRenderPass : public RenderPass {
+class RayTracedGBufferPass : public RenderPass {
 public:
-    RayTracingRenderPass()
+    RayTracedGBufferPass()
         : RenderPass(PipelineType::eRayTracing) {
     }
 
-    ~RayTracingRenderPass() {
+    ~RayTracedGBufferPass() {
     }
 
     void init(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
@@ -75,25 +73,34 @@ public:
     }
 
     void define() {
-        m_pResourceManager->createTextureRGBA32Sfloat("RtColor");
-        auto texture = m_pResourceManager->getTexture("RtColor");
+        // for ray tracing, writing to output image will be manually called by shader
+        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedPosWorld");
+        auto texture = m_pResourceManager->getTexture("RayTracedPosWorld");
         transitionImageLayout(*m_pContext, m_commandPool, texture, 
                               vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 
                               vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eRayTracingShaderKHR);
 
-        kOffscreenOutputTextureNames.push_back("RtColor");
+        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedNormalWorld");
+        texture = m_pResourceManager->getTexture("RayTracedNormalWorld");
+        transitionImageLayout(*m_pContext, m_commandPool, texture, 
+                              vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 
+                              vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eRayTracingShaderKHR);
+
+        kOffscreenOutputTextureNames.push_back("RayTracedPosWorld");
+        kOffscreenOutputTextureNames.push_back("RayTracedNormalWorld");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
             {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eRaygenKHR, 1}, 
             {"SceneTextures", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eClosestHitKHR, static_cast<uint32_t>(m_pScene->getTextures().size())},            
             {"SceneObjects", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eClosestHitKHR, static_cast<uint32_t>(m_pScene->getObjects().size())},
-            {"RtColor", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1}, // for ray tracing, writing to output image will be manually called by shader
-            {"Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR, 1} // name doesn't matter for AS
+            {"RayTracedPosWorld", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1}, 
+            {"RayTracedNormalWorld", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1}, 
+            {"GBufferTlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR, 1} // name doesn't matter for AS
         };
         createDescriptorSet(bindings);
 
-        setupRayTracingPipeline("shaders/rt.rgen.spv", "shaders/rt.rmiss.spv", "shaders/rt.rchit.spv");
+        setupRayTracingPipeline("shaders/RayTracedGBuffer.rgen.spv", "shaders/RayTracedGBuffer.rmiss.spv", "shaders/RayTracedGBuffer.rchit.spv");
     }
 
     void setup() override {
@@ -130,14 +137,14 @@ private:
     PushConstantRay m_pcRay;
 };
 
-class OffscreenRenderPass : public RenderPass {
+class RasterGBufferPass : public RenderPass {
 public:
-    OffscreenRenderPass()
+    RasterGBufferPass()
         : RenderPass(PipelineType::eRasterization)
     {
     }
 
-    ~OffscreenRenderPass() {
+    ~RasterGBufferPass() {
     }
 
     void init(VulkanContext* pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) override {
@@ -219,7 +226,7 @@ public:
         createFramebuffer(colorAttachments, depthStencilAttachment);
 
         // create a graphics pipeline for this render pass
-        setupRasterPipeline("shaders/shader.vert.spv", "shaders/shader.frag.spv");
+        setupRasterPipeline("shaders/RasterGBuffer.vert.spv", "shaders/RasterGBuffer.frag.spv");
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
@@ -260,20 +267,20 @@ public:
         commandBuffer.setScissor(0, 1, &scissor);
 
         uint32_t objSize = m_pScene->getObjects().size();
-        std::vector<vk::Buffer> vertexBuffers(objSize);
         vk::DeviceSize offsets[] = {0};
 
         for (uint32_t i = 0; i < objSize; ++i) {
             auto object = m_pScene->getObject(i);
-            vertexBuffers[i] = object.vertexBuffer->descriptorInfo.buffer;
+            vk::Buffer vertexBuffers = object.vertexBuffer->descriptorInfo.buffer;
+            vk::Buffer instanceBuffer = m_pResourceManager->getBuffer("InstanceBuffer" + std::to_string(i)).descriptorInfo.buffer;
 
-            vk::Buffer instanceBuffer = m_pResourceManager->getBuffer("InstanceBuffer").descriptorInfo.buffer;
+            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pPipeline->getPipelineLayout(), 0, 1, &m_descriptorSet, 0, nullptr);
 
-            commandBuffer.bindVertexBuffers(0, 1, vertexBuffers.data(), offsets);
+            commandBuffer.bindVertexBuffers(0, 1, &vertexBuffers, offsets);
             commandBuffer.bindVertexBuffers(1, 1, &instanceBuffer, offsets);
             commandBuffer.bindIndexBuffer(object.indexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
-            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pPipeline->getPipelineLayout(), 0, 1, &m_descriptorSet, 0, nullptr);
-            commandBuffer.drawIndexed(object.indexBufferSize, m_pScene->getInstances().size(), 0, 0, 0);
+
+            commandBuffer.drawIndexed(object.indexBufferSize, object.instanceCount, 0, 0, 0);
         }
 
         commandBuffer.endRenderPass();
@@ -282,7 +289,7 @@ public:
 private:
     vk::Format m_colorAttachmentFormat {vk::Format::eR32G32B32A32Sfloat};
 
-}; // class OffscreenRenderPass
+}; // class RasterGBufferPass
 
 class FinalRenderPass : public RenderPass {
 public:
@@ -347,7 +354,7 @@ public:
         createSwapChainFrameBuffers(m_pResourceManager->getTexture("FinalDepth"));
 
         // create a graphics pipeline for this render pass
-        setupRasterPipeline("shaders/final.vert.spv", "shaders/final.frag.spv", true);
+        setupRasterPipeline("shaders/Final.vert.spv", "shaders/Final.frag.spv", true);
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
@@ -517,8 +524,8 @@ private:
     // scene description
     std::shared_ptr<Scene> m_pScene;
 
-    OffscreenRenderPass m_offscreenRenderPass;
-    RayTracingRenderPass m_rtRenderPass;
+    RasterGBufferPass m_rasterGBufferPass;
+    RayTracedGBufferPass m_rtGBufferPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
@@ -628,7 +635,7 @@ private:
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         
         // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-        m_pWindow = glfwCreateWindow(kWidth, kHeight, kAppName.c_str(), nullptr, nullptr);
+        m_pWindow = glfwCreateWindow(kWidth, kHeight, "vuren", nullptr, nullptr);
         glfwSetWindowUserPointer(m_pWindow, this);
         glfwSetFramebufferSizeCallback(m_pWindow, framebufferResizeCallback);
     }
@@ -648,13 +655,13 @@ private:
         m_swapChainColorImages = std::make_shared<std::vector<vk::Image>>();
         m_swapChainColorImageViews = std::make_shared<std::vector<vk::ImageView>>();
 
-        m_offscreenRenderPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        m_rasterGBufferPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
         m_finalRenderPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
 
         createSwapChain();
         createSwapChainImageViews();
         m_pResourceManager->setExtent(m_swapChainExtent);
-        m_offscreenRenderPass.setExtent(m_swapChainExtent);
+        m_rasterGBufferPass.setExtent(m_swapChainExtent);
         m_finalRenderPass.setExtent(m_swapChainExtent);
         createCommandPool();
         m_pResourceManager->setCommandPool(m_commandPool);
@@ -665,17 +672,18 @@ private:
         auto texture1 = m_pResourceManager->createModelTexture("Statue", "textures/texture.jpg");
         m_pScene->addTexture(texture1);
         
-        m_pResourceManager->loadObjModel("Room", "models/viking_room.obj", m_pScene);
+        //m_pResourceManager->loadObjModel("Room", "models/viking_room.obj", m_pScene);
+        m_pResourceManager->loadObjModel("Bunny", "models/bunny.obj", m_pScene);
         m_pResourceManager->createObjectDeviceInfoBuffer(m_pScene);    
 
-        createRandomInstances();
+        //createRandomInstances(0, 20);
+        createRandomInstances(0, 30);
 
-        m_offscreenRenderPass.setup();
+        m_rasterGBufferPass.setup();
 
-
-        m_rtRenderPass.setExtent(m_swapChainExtent);
-        m_rtRenderPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        m_rtRenderPass.setup();
+        m_rtGBufferPass.setExtent(m_swapChainExtent);
+        m_rtGBufferPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        m_rtGBufferPass.setup();
 
         m_finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages, m_swapChainColorImageViews);
         m_finalRenderPass.setup();
@@ -704,8 +712,8 @@ private:
         ImGui_ImplVulkan_Shutdown();
         m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
         
-        m_offscreenRenderPass.cleanup();
-        m_rtRenderPass.cleanup();
+        m_rasterGBufferPass.cleanup();
+        m_rtGBufferPass.cleanup();
         m_finalRenderPass.cleanup();
 
         m_pResourceManager->destroyTextures();
@@ -725,33 +733,39 @@ private:
         glfwTerminate();
     }
 
-    void createRandomInstances() {
-        std::default_random_engine rng((unsigned)time(nullptr));
+    void createRandomInstances(uint32_t objId, uint32_t instanceCount) {
+        std::vector<ObjectInstance> instances;
+
+        m_pScene->setInstanceCount(objId, instanceCount);
+
+        static std::default_random_engine rng((unsigned)time(nullptr));
         std::uniform_real_distribution<float> uniformDist(0.0, 1.0);
         std::uniform_real_distribution<float> uniformDistPos(-1.0, 1.0);
-        for (uint32_t i = 0; i < kInstanceCount; ++i) {
+        for (uint32_t i = 0; i < instanceCount; ++i) {
             ObjectInstance instance;
             
             auto pos = glm::translate(glm::identity<glm::mat4>(), glm::vec3(uniformDistPos(rng), uniformDistPos(rng), uniformDistPos(rng)));
             auto scale = glm::scale(glm::identity<glm::mat4>(), glm::vec3(0.5f, 0.5f, 0.5f));
-            auto rot = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            auto rot_z = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            auto rot_y = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            auto rot_x = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
             
             // glsl and glm: uses column-major order matrices of column vectors
-            instance.world = pos * rot * scale;
+            instance.world = pos * rot_z * rot_y * rot_x * scale;
             instance.invTransposeWorld = glm::transpose(glm::inverse(instance.world));
-            instance.objectId = 0;
+            instance.objectId = objId;
             
-            m_pScene->addInstance(instance);
+            instances.push_back(instance);
         }
 
-        vk::DeviceSize bufferSize = m_pScene->getInstances().size() * sizeof(ObjectInstance);
+        vk::DeviceSize bufferSize = instances.size() * sizeof(ObjectInstance);
 
         // staging buffer
         Buffer stagingBuffer = m_pResourceManager->createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
         void* data;
         data = m_vkContext.m_device.mapMemory(stagingBuffer.memory, 0, bufferSize);
-            memcpy(data, m_pScene->getInstances().data(), (size_t)bufferSize);
+            memcpy(data, instances.data(), (size_t)bufferSize);
         m_vkContext.m_device.unmapMemory(stagingBuffer.memory);
 
         // instance buffer
@@ -762,7 +776,9 @@ private:
 
         m_pResourceManager->destroyBuffer(stagingBuffer);
 
-        m_pResourceManager->insertBuffer("InstanceBuffer", instanceBuffer);
+        m_pResourceManager->insertBuffer("InstanceBuffer" + std::to_string(objId), instanceBuffer);
+
+        m_pScene->addInstances(instances);
     }
 
     void createSwapChain() {
@@ -916,10 +932,11 @@ private:
 
         updateUniformBuffer("CameraBuffer");
 
-        if (kOffscreenOutputTextureNames[kCurrentItem] == "RtColor")
-            m_rtRenderPass.record(commandBuffer);        
+        if (kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedPosWorld"
+            || kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedNormalWorld")
+            m_rtGBufferPass.record(commandBuffer);        
         else
-            m_offscreenRenderPass.record(commandBuffer);
+            m_rasterGBufferPass.record(commandBuffer);
 
         auto outputTexture = m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]);
 

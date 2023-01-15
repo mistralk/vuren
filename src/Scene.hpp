@@ -13,8 +13,8 @@ public:
     Scene() {}
     ~Scene() {}
 
-    SceneObject getObject(uint32_t id) {
-        return m_objects[id];
+    SceneObject getObject(uint32_t objectId) {
+        return m_objects[objectId];
     }
 
     const std::vector<SceneObject>& getObjects() {
@@ -41,12 +41,16 @@ public:
         m_objectsDevice.emplace_back(object);
     }
 
-    void addInstance(ObjectInstance instance) {
-        m_instances.emplace_back(instance);
+    void addInstances(const std::vector<ObjectInstance>& instances) {
+        m_instances.insert(m_instances.end(), instances.begin(), instances.end());
     }
 
     void addTexture(Texture texture) {
         m_textures.emplace_back(texture);
+    }
+
+    void setInstanceCount(uint32_t objectId, uint32_t count) {
+        m_objects[objectId].instanceCount = count;
     }
 
 private:

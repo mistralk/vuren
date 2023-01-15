@@ -7,8 +7,16 @@ struct SurfaceHit {
     vec2 texCoord;
 };
 
-struct HitPayload {
-    vec3 hitValue;
-};
+SurfaceHit getInitialValues() {
+    SurfaceHit hit;
+    hit.worldPos = vec3(0.0, 0.0, 0.0);
+    hit.worldNormal = vec3(0.0, 0.0, 0.0);
+    hit.texCoord = vec2(0.0, 0.0);
+    return hit;
+}
+
+// struct HitPayload {
+//     vec3 hitValue;
+// };
 
 #endif // SHADER_COMMON_H

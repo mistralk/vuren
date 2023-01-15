@@ -23,7 +23,6 @@ using uint = unsigned int;
 
 const uint32_t kWidth = 800;
 const uint32_t kHeight = 600;
-static std::string kAppName = "vrb";
 // const int kMaxFramesInFlight = 1;
 
 struct Texture {
@@ -48,6 +47,7 @@ struct SceneObject {
     uint indexBufferSize {0};
     Buffer* vertexBuffer;
     Buffer* indexBuffer;
+    uint instanceCount {0};
 };
 
 #endif // __cplusplus
