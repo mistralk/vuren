@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace vrb {
+namespace vuren {
 
 class Scene {
 public:
@@ -62,6 +62,6 @@ private:
 
 };
 
-} // namespace vrb
+} // namespace vuren
 
 #endif // SCENE_HPP

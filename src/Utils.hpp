@@ -8,7 +8,7 @@
 #include <vector>
 #include "Common.hpp"
 
-namespace vrb {
+namespace vuren {
 
 std::vector<char> readFile(const std::string& filename);
 
@@ -21,6 +21,6 @@ void DestroyDebugUtilsMessengerEXT(vk::Instance instance,
     vk::DebugUtilsMessengerEXT debugMessenger, 
     const vk::AllocationCallbacks* pAllocator);
 
-} // namespace vrb
+} // namespace vuren
 
 #endif // UTILS_HPP

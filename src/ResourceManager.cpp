@@ -5,7 +5,7 @@
 
 #include "ResourceManager.hpp"
 
-namespace vrb {
+namespace vuren {
 
 ResourceManager::ResourceManager(VulkanContext* pContext) 
     : m_pContext(pContext) {
@@ -660,4 +660,4 @@ void transitionImageLayout(const VulkanContext& context, vk::CommandPool& comman
     endSingleTimeCommands(context, commandPool, commandBuffer);
 }
 
-} // namespace vrb
+} // namespace vuren

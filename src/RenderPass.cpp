@@ -1,7 +1,7 @@
 #include "RenderPass.hpp"
 #include "VulkanContext.hpp"
 
-namespace vrb {
+namespace vuren {
 
 void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo) {
     if (m_rasterProperties.renderPass) {
@@ -705,4 +705,4 @@ void RenderPass::setupRayTracingPipeline(const std::string& raygenShaderPath, co
     m_pPipeline->setup();
 }
 
-}; // namespace vrb
+}; // namespace vuren

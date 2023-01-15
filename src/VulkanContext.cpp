@@ -2,7 +2,7 @@
 #include "Utils.hpp"
 #include <set>
 
-namespace vrb {
+namespace vuren {
 
 VulkanContext::VulkanContext() {
 }
@@ -359,4 +359,4 @@ void VulkanContext::populateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCrea
     };
 }
 
-} // namespace vrb
+} // namespace vuren

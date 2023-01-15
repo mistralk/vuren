@@ -9,7 +9,7 @@
 #include "Common.hpp"
 #include "ResourceManager.hpp"
 
-namespace vrb {
+namespace vuren {
 
 struct RasterProperties {
     vk::RenderPass renderPass {VK_NULL_HANDLE};
@@ -105,7 +105,7 @@ private:
 
 }; // class RayTracingPipeline
 
-} // namespace vrb
+} // namespace vuren
 
 
 #endif // PIPELINE_HPP

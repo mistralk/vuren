@@ -3,7 +3,7 @@
 
 #include <chrono>
 
-namespace vrb {
+namespace vuren {
 
 class Timer {
 public:
@@ -20,6 +20,6 @@ private:
 
 };
 
-} // namespace vrb
+} // namespace vuren
 
 #endif // TIMER_HPP

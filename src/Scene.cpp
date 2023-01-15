@@ -1,5 +1,5 @@
 #include "Scene.hpp"
 
-namespace vrb {
+namespace vuren {
 
-} // namespace vrb
+} // namespace vuren

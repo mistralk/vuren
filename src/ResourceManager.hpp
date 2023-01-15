@@ -9,7 +9,7 @@
 #include "Common.hpp"
 #include "Scene.hpp"
 
-namespace vrb {
+namespace vuren {
 
 bool hasStencilComponent(vk::Format format);
 
@@ -168,6 +168,6 @@ private:
 
 }; // class ResourceManager
 
-} // namespace vrb
+} // namespace vuren
 
 #endif // RESOURCE_MANAGER_HPP

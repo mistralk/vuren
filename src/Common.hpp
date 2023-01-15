@@ -13,7 +13,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
-namespace vrb {
+namespace vuren {
 
 using vec2 = glm::vec2;
 using vec3 = glm::vec3;
@@ -138,11 +138,11 @@ struct PushConstantRay {
 };
 
 #ifdef __cplusplus
-} // namespace vrb
+} // namespace vuren
 
 namespace std {
-template<> struct hash<vrb::Vertex> {
-    size_t operator()(vrb::Vertex const& vertex) const {
+template<> struct hash<vuren::Vertex> {
+    size_t operator()(vuren::Vertex const& vertex) const {
         return ((hash<glm::vec3>()(vertex.pos) ^
                 (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
                 (hash<glm::vec2>()(vertex.texCoord) << 1);

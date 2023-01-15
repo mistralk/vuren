@@ -1,6 +1,6 @@
 #include "Pipeline.hpp"
 
-namespace vrb {
+namespace vuren {
 
 // RasterizationPipeline
 
@@ -299,4 +299,4 @@ void RayTracingPipeline::setup() {
     }
 }
 
-} // namespace vrb
+} // namespace vuren

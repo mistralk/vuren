@@ -1,6 +1,6 @@
 #include "Timer.hpp"
 
-namespace vrb {
+namespace vuren {
 
 Timer::Timer() :
     m_start(std::chrono::steady_clock::now()) {
@@ -17,4 +17,4 @@ double Timer::elapsed() {
     return elapsed.count();
 }
 
-} // namespace vrb
+} // namespace vuren

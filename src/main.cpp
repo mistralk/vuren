@@ -41,7 +41,7 @@
 #include "Timer.hpp"
 #include "Scene.hpp"
 
-namespace vrb {
+namespace vuren {
 
 // temporary: for output texture control in GUI
 std::vector<std::string> kOffscreenOutputTextureNames;
@@ -1097,10 +1097,10 @@ private:
     }
 };
 
-} // namespace vrb
+} // namespace vuren
 
 int main() {
-    vrb::Application app;
+    vuren::Application app;
 
     try {
         app.run();

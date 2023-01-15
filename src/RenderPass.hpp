@@ -15,7 +15,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace vrb {
+namespace vuren {
 
 class VulkanContext;
 
@@ -135,6 +135,6 @@ protected:
 
 }; // class RenderPass
 
-} // namespace vrb
+} // namespace vuren
 
 #endif // RENDER_PASS_HPP

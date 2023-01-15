@@ -5,7 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace vrb {
+namespace vuren {
 
 std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -47,4 +47,4 @@ void DestroyDebugUtilsMessengerEXT(vk::Instance instance, vk::DebugUtilsMessenge
     }
 }
 
-} // namespace vrb
+} // namespace vuren

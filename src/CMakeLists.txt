@@ -1,4 +1,4 @@
-target_sources(vulkan_render_base PRIVATE
+target_sources(vuren PRIVATE
     Common.hpp
     VulkanContext.hpp
     VulkanContext.cpp

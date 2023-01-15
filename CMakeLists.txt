@@ -1,23 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(vulkan_render_base)
-add_executable(vulkan_render_base)
+project(vuren)
+add_executable(vuren)
 
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 
-set_target_properties(vulkan_render_base PROPERTIES CMAKE_CXX_STANDARD 20)
-set_target_properties(vulkan_render_base PROPERTIES CMAKE_CXX_STANDARD_REQUIRED ON)
-set_target_properties(vulkan_render_base PROPERTIES CMAKE_CXX_EXTENSIONS OFF)
+set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD 20)
+set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD_REQUIRED ON)
+set_target_properties(vuren PROPERTIES CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(src)
 
-target_include_directories(vulkan_render_base PRIVATE ext)
-target_include_directories(vulkan_render_base PRIVATE ext/imgui)
-target_include_directories(vulkan_render_base PRIVATE ext/imgui/backends)
+target_include_directories(vuren PRIVATE ext)
+target_include_directories(vuren PRIVATE ext/imgui)
+target_include_directories(vuren PRIVATE ext/imgui/backends)
 
-target_sources(vulkan_render_base PRIVATE
+target_sources(vuren PRIVATE
     ext/imgui/imgui.cpp
     ext/imgui/imgui_draw.cpp
     ext/imgui/imgui_widgets.cpp
@@ -26,7 +26,7 @@ target_sources(vulkan_render_base PRIVATE
     ext/imgui/backends/imgui_impl_glfw.cpp
 )
 
-target_link_libraries(vulkan_render_base PRIVATE
+target_link_libraries(vuren PRIVATE
     vulkan
     glfw
 )
@@ -53,7 +53,7 @@ foreach(GLSL_SOURCE_FILE ${GLSL_SOURCE_FILES})
 endforeach()
 
 add_custom_target(shaders DEPENDS ${SPIRV_BINARY_FILES})
-add_dependencies(vulkan_render_base shaders)
+add_dependencies(vuren shaders)
 
 # copy texture assets
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/textures DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

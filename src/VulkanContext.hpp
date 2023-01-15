@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <optional>
 
-namespace vrb {
+namespace vuren {
 
 #ifdef NDEBUG
     const bool kEnableValidationLayers = false;
@@ -97,6 +97,6 @@ private:
     vk::DebugUtilsMessengerEXT m_debugMessenger;
 };
 
-} // namespace vrb
+} // namespace vuren
 
 #endif // VULKAN_CONTEXT_HPP
