@@ -13,5 +13,5 @@ layout(push_constant) uniform _PushConstantRay {
 };
 
 void main() {
-    payload.hitValue = vec3(0.5, 0.5, 0.5);
+    payload.hitValue = vec3(0.0, 0.0, 0.0);
 }

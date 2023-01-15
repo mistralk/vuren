@@ -26,14 +26,36 @@ const uint32_t kHeight = 600;
 static std::string kAppName = "vrb";
 // const int kMaxFramesInFlight = 1;
 
-struct Buffer;
+struct Texture {
+    std::string name;
+    vk::Image image {VK_NULL_HANDLE};
+    vk::DeviceMemory memory {VK_NULL_HANDLE};
+    vk::DescriptorImageInfo descriptorInfo {VK_NULL_HANDLE};
+};
+
+struct Buffer {
+    vk::DeviceMemory memory {VK_NULL_HANDLE};
+    vk::DescriptorBufferInfo descriptorInfo {VK_NULL_HANDLE};
+};
+
+struct AccelerationStructure {
+    vk::AccelerationStructureKHR as;
+    Buffer buffer;
+};
+
 struct SceneObject {
     uint vertexBufferSize {0};
     uint indexBufferSize {0};
     Buffer* vertexBuffer;
     Buffer* indexBuffer;
 };
+
 #endif // __cplusplus
+
+struct SceneObjectDevice {
+    uint64_t vertexAddress;
+    uint64_t indexAddress;
+};
 
 struct Vertex {
     vec3 pos;

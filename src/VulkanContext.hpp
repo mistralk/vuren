@@ -77,6 +77,12 @@ public:
         void* pUserData);
     void populateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCreateInfoEXT& createInfo);
 
+    vk::DeviceAddress getBufferDeviceAddress(vk::Buffer buffer) {
+        vk::BufferDeviceAddressInfo bufferAddressInfo = { .buffer = buffer };
+        vk::DeviceAddress bufferAddress = m_device.getBufferAddress(bufferAddressInfo);
+        return bufferAddress;
+    }
+
     vk::Instance m_instance;
     vk::SurfaceKHR m_surface;
     vk::PhysicalDevice m_physicalDevice;

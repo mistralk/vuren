@@ -2,7 +2,6 @@
 #define SCENE_HPP
 
 #include "Common.hpp"
-#include "ResourceManager.hpp"
 
 #include <string>
 #include <vector>
@@ -22,6 +21,10 @@ public:
         return m_objects;
     }
 
+    const std::vector<SceneObjectDevice>& getObjectsDevice() {
+        return m_objectsDevice;
+    }
+
     const std::vector<ObjectInstance>& getInstances() {
         return m_instances;
     }
@@ -31,19 +34,25 @@ public:
     }
 
     void addObject(SceneObject object) {
-        m_objects.push_back(object);
+        m_objects.emplace_back(object);
+    }
+
+    void addObjectDevice(SceneObjectDevice object) {
+        m_objectsDevice.emplace_back(object);
     }
 
     void addInstance(ObjectInstance instance) {
-        m_instances.push_back(instance);
+        m_instances.emplace_back(instance);
     }
 
     void addTexture(Texture texture) {
-        m_textures.push_back(texture);
+        m_textures.emplace_back(texture);
     }
 
 private:
     std::vector<SceneObject> m_objects;
+    std::vector<SceneObjectDevice> m_objectsDevice;
+
     std::vector<ObjectInstance> m_instances;
     std::vector<Texture> m_textures;
 

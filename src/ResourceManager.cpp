@@ -143,7 +143,7 @@ void ResourceManager::setCommandPool(vk::CommandPool commandPool) {
     m_commandPool = commandPool;
 }
 
-SceneObject ResourceManager::loadObjModel(const std::string& name, const std::string& filename) {
+void ResourceManager::loadObjModel(const std::string& name, const std::string& filename, std::shared_ptr<Scene> pScene) {
     std::string vertexBufferKey = std::string(name + "_vertexBuffer");
     std::string indexBufferKey = std::string(name + "_indexBuffer");
     std::vector<Vertex> vertices;
@@ -200,7 +200,14 @@ SceneObject ResourceManager::loadObjModel(const std::string& name, const std::st
         .indexBuffer = &m_globalBufferDict[indexBufferKey]
     };
 
-    return object;
+    // using this address information, shaders can access these buffers by indexing.
+    SceneObjectDevice objectDeviceInfo = {
+        .vertexAddress = m_pContext->getBufferDeviceAddress(m_globalBufferDict[vertexBufferKey].descriptorInfo.buffer),
+        .indexAddress = m_pContext->getBufferDeviceAddress(m_globalBufferDict[indexBufferKey].descriptorInfo.buffer)
+    };
+
+    pScene->addObject(object);
+    pScene->addObjectDevice(objectDeviceInfo);
 }
 
 Buffer ResourceManager::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties) {

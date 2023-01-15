@@ -7,25 +7,9 @@
 
 #include "VulkanContext.hpp"
 #include "Common.hpp"
+#include "Scene.hpp"
 
 namespace vrb {
-
-struct Texture {
-    std::string name;
-    vk::Image image {VK_NULL_HANDLE};
-    vk::DeviceMemory memory {VK_NULL_HANDLE};
-    vk::DescriptorImageInfo descriptorInfo {VK_NULL_HANDLE};
-};
-
-struct Buffer {
-    vk::DeviceMemory memory {VK_NULL_HANDLE};
-    vk::DescriptorBufferInfo descriptorInfo {VK_NULL_HANDLE};
-};
-
-struct AccelerationStructure {
-    vk::AccelerationStructureKHR as;
-    Buffer buffer;
-};
 
 bool hasStencilComponent(vk::Format format);
 
@@ -59,7 +43,10 @@ public:
     Texture createModelTexture(const std::string& name, const std::string& filename);
     void createModelTextureSampler(Texture& texture);
 
-    SceneObject loadObjModel(const std::string& name, const std::string& filename);
+    void loadObjModel(const std::string& name, const std::string& filename, std::shared_ptr<Scene> pScene);
+    void createObjectDeviceInfoBuffer(std::shared_ptr<Scene> pScene) {
+        createBufferByHostData<SceneObjectDevice>(pScene->getObjectsDevice(), vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, "SceneObjectDeviceInfo");
+    }
     void createAs(vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure& as);
     void destroyAs(AccelerationStructure& as);
 

@@ -46,6 +46,21 @@ public:
         vk::AccessFlags dstAccessMask;
     };
 
+    struct BlasInput {
+        std::vector<vk::AccelerationStructureGeometryKHR> asGeometry;
+        std::vector<vk::AccelerationStructureBuildRangeInfoKHR> asBuildOffsetInfo;
+        vk::BuildAccelerationStructureFlagsKHR flags {0};
+    };
+    
+    struct BuildAccelerationStructure {
+        vk::AccelerationStructureBuildGeometryInfoKHR buildInfo;
+        vk::AccelerationStructureBuildSizesInfoKHR sizeInfo;
+        const vk::AccelerationStructureBuildRangeInfoKHR* rangeInfo;
+
+        AccelerationStructure as;
+        AccelerationStructure cleanupAs;
+    };
+
     RenderPass(PipelineType pipelineType)
         : m_pipelineType(pipelineType) {
     }
@@ -94,9 +109,27 @@ protected:
     std::shared_ptr<Scene> m_pScene {nullptr};
 
     void createDescriptorSet(const std::vector<ResourceBindingInfo>& bindingInfos);
+
+    // rasterization
     void createFramebuffer(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo);
     void createVkRenderPass(const std::vector<AttachmentInfo>& colorAttachmentInfos, const AttachmentInfo& depthStencilAttachmentInfo);
-    
+
+    // ray tracing
+    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR m_rtProperties;
+    Buffer m_sbtBuffer;
+    vk::StridedDeviceAddressRegionKHR m_rgenRegion {};
+    vk::StridedDeviceAddressRegionKHR m_missRegion {};
+    vk::StridedDeviceAddressRegionKHR m_hitRegion {};
+    vk::StridedDeviceAddressRegionKHR m_callRegion {};
+
+    BlasInput objectToVkGeometryKHR(const SceneObject& object);
+    void buildBlas(const std::vector<BlasInput>& input, vk::BuildAccelerationStructureFlagsKHR flags);
+    void createBlas();
+    void buildTlas(const std::vector<vk::AccelerationStructureInstanceKHR>& instances, vk::BuildAccelerationStructureFlagsKHR flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace, bool update = false);
+    void createTlas(const std::vector<ObjectInstance>& instances);
+    uint32_t align_up(uint32_t size, uint32_t alignment);
+    void createShaderBindingTable();
+
     void setupRasterPipeline(const std::string& vertShaderPath, const std::string& fragShaderPath, bool isBlitPass = false);
     void setupRayTracingPipeline(const std::string& raygenShaderPath, const std::string& missShaderPath, const std::string& closestHitShaderPath);
 

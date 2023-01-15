@@ -181,7 +181,8 @@ void VulkanContext::createLogicalDevice() {
     // submit them all at once on the main thread with a single low-overhead call."
 
     vk::PhysicalDeviceFeatures deviceFeatures {
-        .samplerAnisotropy = VK_TRUE
+        .samplerAnisotropy = VK_TRUE,
+        .shaderInt64 = VK_TRUE
     };
 
     vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature {
