@@ -55,6 +55,6 @@ endforeach()
 add_custom_target(shaders DEPENDS ${SPIRV_BINARY_FILES})
 add_dependencies(vuren shaders)
 
-# copy texture assets
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/textures DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/models DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# copy assets
+file(COPY ${CMAKE_CURRENT_LIST_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# file(COPY ${CMAKE_CURRENT_LIST_DIR}/models DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

@@ -4,16 +4,14 @@
 
 namespace vuren {
 
-VulkanContext::VulkanContext() {
-}
+VulkanContext::VulkanContext() {}
 
-VulkanContext::~VulkanContext() {
-}
+VulkanContext::~VulkanContext() {}
 
-void VulkanContext::init(std::string appName, GLFWwindow* pWindow) {
+void VulkanContext::init(std::string appName, GLFWwindow *pWindow) {
     m_appName = appName;
     m_pWindow = pWindow;
-    
+
     createInstance();
     setupDebugMessenger();
     createSurface();
@@ -33,11 +31,12 @@ void VulkanContext::cleanup() {
 }
 
 void VulkanContext::createInstance() {
-    #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
-        vk::DynamicLoader dl;
-        PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-    #endif
+#if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+    vk::DynamicLoader dl;
+    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
+        dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+#endif
 
     if (kEnableValidationLayers && !checkValidationLayerSupport()) {
         throw std::runtime_error("validation layers requested, but not available!");
@@ -45,62 +44,53 @@ void VulkanContext::createInstance() {
 
     assert(!m_appName.empty());
 
-    vk::ApplicationInfo applicationInfo {
-        .pApplicationName      = m_appName.c_str(),
-        .applicationVersion    = 1,
-        .pEngineName           = nullptr, 
-        .engineVersion         = 1,
-        .apiVersion            = VK_API_VERSION_1_2
-    };
+    vk::ApplicationInfo applicationInfo{ .pApplicationName   = m_appName.c_str(),
+                                         .applicationVersion = 1,
+                                         .pEngineName        = nullptr,
+                                         .engineVersion      = 1,
+                                         .apiVersion         = VK_API_VERSION_1_2 };
 
-    vk::InstanceCreateInfo instanceCreateInfo {
-        .pApplicationInfo = &applicationInfo
-    };
+    vk::InstanceCreateInfo instanceCreateInfo{ .pApplicationInfo = &applicationInfo };
 
     vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 
     if (kEnableValidationLayers) {
-        instanceCreateInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());
+        instanceCreateInfo.enabledLayerCount   = static_cast<uint32_t>(kValidationLayers.size());
         instanceCreateInfo.ppEnabledLayerNames = kValidationLayers.data();
 
         populateDebugMessengerCreateInfo(debugCreateInfo);
-        instanceCreateInfo.pNext = (vk::DebugUtilsMessengerCreateInfoEXT*) &debugCreateInfo;
+        instanceCreateInfo.pNext = (vk::DebugUtilsMessengerCreateInfoEXT *) &debugCreateInfo;
 
-        vk::ValidationFeatureEnableEXT enabledValidationFeatures[] {
-            vk::ValidationFeatureEnableEXT::eDebugPrintf
-        };
-        vk::ValidationFeaturesEXT validationFeatures {
-            .pNext = instanceCreateInfo.pNext,
-            .enabledValidationFeatureCount = std::size(enabledValidationFeatures),
-            .pEnabledValidationFeatures = enabledValidationFeatures
-        };
+        vk::ValidationFeatureEnableEXT enabledValidationFeatures[]{ vk::ValidationFeatureEnableEXT::eDebugPrintf };
+        vk::ValidationFeaturesEXT validationFeatures{ .pNext = instanceCreateInfo.pNext,
+                                                      .enabledValidationFeatureCount =
+                                                          std::size(enabledValidationFeatures),
+                                                      .pEnabledValidationFeatures = enabledValidationFeatures };
         instanceCreateInfo.pNext = &validationFeatures;
 
-        auto extensions = getRequiredExtensions();
-        instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+        auto extensions                            = getRequiredExtensions();
+        instanceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
-        vk::StructureChain<vk::InstanceCreateInfo, vk::ValidationFeaturesEXT, vk::DebugUtilsMessengerCreateInfoEXT> chain = {instanceCreateInfo, validationFeatures, debugCreateInfo};
+        vk::StructureChain<vk::InstanceCreateInfo, vk::ValidationFeaturesEXT, vk::DebugUtilsMessengerCreateInfoEXT>
+            chain  = { instanceCreateInfo, validationFeatures, debugCreateInfo };
         m_instance = vk::createInstance(chain.get<vk::InstanceCreateInfo>()), nullptr;
 
-
-        #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
-            VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
-        #endif
+#if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
+#endif
         return;
-    }
-    else {
+    } else {
         instanceCreateInfo.enabledLayerCount = 0;
-        instanceCreateInfo.pNext = nullptr;
+        instanceCreateInfo.pNext             = nullptr;
 
-        auto extensions = getRequiredExtensions();
-        instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+        auto extensions                            = getRequiredExtensions();
+        instanceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
         instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
-        m_instance = vk::createInstance(instanceCreateInfo, nullptr);
+        m_instance                                 = vk::createInstance(instanceCreateInfo, nullptr);
 
-
-        #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
-            VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
-        #endif
+#if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
+#endif
     }
 
     // "Vulkan is a platform agnostic API, which means that you need an extension
@@ -111,9 +101,9 @@ void VulkanContext::createInstance() {
     // instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     // instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
 
-    std::vector<vk::ExtensionProperties> avaliableExtensions =  vk::enumerateInstanceExtensionProperties(nullptr);
+    std::vector<vk::ExtensionProperties> avaliableExtensions = vk::enumerateInstanceExtensionProperties(nullptr);
     std::cout << "available extensions:\n";
-    for (const auto& extension : avaliableExtensions) {
+    for (const auto &extension: avaliableExtensions) {
         std::cout << '\t' << extension.extensionName << '\n';
     }
 
@@ -121,11 +111,12 @@ void VulkanContext::createInstance() {
 }
 
 void VulkanContext::setupDebugMessenger() {
-    if (!kEnableValidationLayers) return;
+    if (!kEnableValidationLayers)
+        return;
 
     vk::DebugUtilsMessengerCreateInfoEXT createInfo{};
     populateDebugMessengerCreateInfo(createInfo);
-    
+
     if (CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_debugMessenger) != VK_SUCCESS) {
         throw std::runtime_error("failed to set up debug messenger!");
     }
@@ -147,7 +138,7 @@ void VulkanContext::pickPhysicalDevice() {
         throw std::runtime_error("failed to find GPUs with Vulkan support!");
     }
 
-    for (const auto& device : devices) {
+    for (const auto &device: devices) {
         if (isDeviceSuitable(device)) {
             m_physicalDevice = device;
             break;
@@ -163,82 +154,69 @@ void VulkanContext::createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
 
     std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
-    std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-    float queuePriority = 1.0f;
+    std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
+    float queuePriority                    = 1.0f;
 
-    for (uint32_t queueFamily : uniqueQueueFamilies) {
-        vk::DeviceQueueCreateInfo queueCreateInfo { 
-            .queueFamilyIndex = queueFamily,
-            .queueCount = 1,
-            .pQueuePriorities = &queuePriority
-        };
+    for (uint32_t queueFamily: uniqueQueueFamilies) {
+        vk::DeviceQueueCreateInfo queueCreateInfo{ .queueFamilyIndex = queueFamily,
+                                                   .queueCount       = 1,
+                                                   .pQueuePriorities = &queuePriority };
         queueCreateInfos.push_back(queueCreateInfo);
     }
-    
-    // The currently available drivers will only allow you to create a small number of queues 
-    // for each queue family and you don't really need more than one. That's because 
-    // you can create all of the command buffers on multiple threads and then 
+
+    // The currently available drivers will only allow you to create a small number of queues
+    // for each queue family and you don't really need more than one. That's because
+    // you can create all of the command buffers on multiple threads and then
     // submit them all at once on the main thread with a single low-overhead call."
 
-    vk::PhysicalDeviceFeatures deviceFeatures {
-        .samplerAnisotropy = VK_TRUE,
-        .shaderInt64 = VK_TRUE
-    };
+    vk::PhysicalDeviceFeatures deviceFeatures{ .samplerAnisotropy = VK_TRUE, .shaderInt64 = VK_TRUE };
 
-    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature {
-        .accelerationStructure = VK_TRUE
-    };
-    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature {
-        .rayTracingPipeline = VK_TRUE
-    };
-    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT bufferAddressFeature {
-        .bufferDeviceAddress = VK_TRUE,
-        .bufferDeviceAddressCaptureReplay = VK_TRUE
-    };
-    vk::PhysicalDeviceDescriptorIndexingFeaturesEXT descriptorIndexingFeature {
+    vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{ .accelerationStructure = VK_TRUE };
+    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ .rayTracingPipeline = VK_TRUE };
+    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT bufferAddressFeature{ .bufferDeviceAddress = VK_TRUE,
+                                                                           .bufferDeviceAddressCaptureReplay =
+                                                                               VK_TRUE };
+    vk::PhysicalDeviceDescriptorIndexingFeaturesEXT descriptorIndexingFeature{
         .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
-        .descriptorBindingVariableDescriptorCount = VK_TRUE,
-        .runtimeDescriptorArray = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount  = VK_TRUE,
+        .runtimeDescriptorArray                    = VK_TRUE,
     };
 
-    vk::DeviceCreateInfo createInfo { 
-        // .pNext = &accelFeature,
-        .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-        .pQueueCreateInfos = queueCreateInfos.data(),
-        .enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size()),
-        .ppEnabledExtensionNames = kDeviceExtensions.data(),
-        .pEnabledFeatures = &deviceFeatures 
+    vk::DeviceCreateInfo createInfo{ // .pNext = &accelFeature,
+                                     .queueCreateInfoCount    = static_cast<uint32_t>(queueCreateInfos.size()),
+                                     .pQueueCreateInfos       = queueCreateInfos.data(),
+                                     .enabledExtensionCount   = static_cast<uint32_t>(kDeviceExtensions.size()),
+                                     .ppEnabledExtensionNames = kDeviceExtensions.data(),
+                                     .pEnabledFeatures        = &deviceFeatures
     };
 
-    vk::StructureChain<vk::DeviceCreateInfo, 
-                    vk::PhysicalDeviceAccelerationStructureFeaturesKHR, 
-                    vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
-                    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT,
-                    vk::PhysicalDeviceDescriptorIndexingFeaturesEXT> chain = {createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature, descriptorIndexingFeature};
+    vk::StructureChain<vk::DeviceCreateInfo, vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+                       vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+                       vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT,
+                       vk::PhysicalDeviceDescriptorIndexingFeaturesEXT>
+        chain = { createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature, descriptorIndexingFeature };
 
     if (kEnableValidationLayers) {
-        createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());
+        createInfo.enabledLayerCount   = static_cast<uint32_t>(kValidationLayers.size());
         createInfo.ppEnabledLayerNames = kValidationLayers.data();
-    }
-    else {
+    } else {
         createInfo.enabledLayerCount = 0;
     }
 
     m_device = m_physicalDevice.createDevice(chain.get<vk::DeviceCreateInfo>(), nullptr);
 
-    #if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);
-    #endif
+#if (VULKAN_HPP_DISPATCH_LOADER_DYNAMIC == 1)
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(m_device);
+#endif
 
     m_graphicsQueue = m_device.getQueue(indices.graphicsFamily.value(), 0);
-    m_presentQueue = m_device.getQueue(indices.presentFamily.value(), 0);
+    m_presentQueue  = m_device.getQueue(indices.presentFamily.value(), 0);
 }
-
 
 bool VulkanContext::isDeviceSuitable(vk::PhysicalDevice device) {
     QueueFamilyIndices indices = findQueueFamilies(device);
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
-    bool swapChainAdequate = false;
+    bool extensionsSupported   = checkDeviceExtensionSupport(device);
+    bool swapChainAdequate     = false;
 
     if (extensionsSupported) {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
@@ -255,7 +233,7 @@ SwapChainSupportDetails VulkanContext::querySwapChainSupport(vk::PhysicalDevice 
     SwapChainSupportDetails details;
 
     details.capabilities = device.getSurfaceCapabilitiesKHR(m_surface);
-    details.formats = device.getSurfaceFormatsKHR(m_surface);
+    details.formats      = device.getSurfaceFormatsKHR(m_surface);
     details.presentModes = device.getSurfacePresentModesKHR(m_surface);
 
     return details;
@@ -267,8 +245,8 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(vk::PhysicalDevice device) {
     std::vector<vk::QueueFamilyProperties> queueFamilies = device.getQueueFamilyProperties();
 
     int i = 0;
-    for (const auto& queueFamily : queueFamilies) {
-        
+    for (const auto &queueFamily: queueFamilies) {
+
         if (device.getSurfaceSupportKHR(i, m_surface)) {
             indices.presentFamily = i;
         }
@@ -289,12 +267,12 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(vk::PhysicalDevice device) {
 
 bool VulkanContext::checkValidationLayerSupport() {
     std::vector<vk::LayerProperties> availableLayers = vk::enumerateInstanceLayerProperties();
-    
+
     int cnt = 0;
-    for (const char* layerName : kValidationLayers) {
+    for (const char *layerName: kValidationLayers) {
         bool layerFound = false;
 
-        for (const auto& layerProperties : availableLayers) {
+        for (const auto &layerProperties: availableLayers) {
             if (std::strcmp(layerName, layerProperties.layerName) == 0) {
                 layerFound = true;
                 break;
@@ -309,12 +287,12 @@ bool VulkanContext::checkValidationLayerSupport() {
     return true;
 }
 
-std::vector<const char*> VulkanContext::getRequiredExtensions() {
+std::vector<const char *> VulkanContext::getRequiredExtensions() {
     uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
+    const char **glfwExtensions;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
     if (kEnableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -327,36 +305,35 @@ bool VulkanContext::checkDeviceExtensionSupport(vk::PhysicalDevice device) {
     std::vector<vk::ExtensionProperties> availableExtensions = device.enumerateDeviceExtensionProperties(nullptr);
     std::set<std::string> requiredExtensions(kDeviceExtensions.begin(), kDeviceExtensions.end());
 
-    for (const auto& extension : availableExtensions) {
+    for (const auto &extension: availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
     }
 
     return requiredExtensions.empty();
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContext::debugCallBack(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,    // verbose < info < warning < error
-    VkDebugUtilsMessageTypeFlagsEXT meessageType,              // general, validation, performance
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, // {message, object handles, object count}
-    void* pUserData) {
+VKAPI_ATTR VkBool32 VKAPI_CALL
+VulkanContext::debugCallBack(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, // verbose < info < warning < error
+                             VkDebugUtilsMessageTypeFlagsEXT meessageType,           // general, validation, performance
+                             const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, // {message, object handles,
+                                                                                        // object count}
+                             void *pUserData) {
 
     if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
     return VK_FALSE;
 }
 
-void VulkanContext::populateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCreateInfoEXT& createInfo) {
-    createInfo = { 
-        .pNext = VK_NULL_HANDLE,
-        .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | 
-                            vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
-                            vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-                            vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
-        .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | 
-                        vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | 
-                        vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-        .pfnUserCallback = debugCallBack
-    };
+void VulkanContext::populateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCreateInfoEXT &createInfo) {
+    createInfo = { .pNext           = VK_NULL_HANDLE,
+                   .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+                                      vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
+                                      vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+                                      vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+                   .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                                  vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+                                  vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
+                   .pfnUserCallback = debugCallBack };
 }
 
 } // namespace vuren

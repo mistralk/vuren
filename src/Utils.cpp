@@ -1,13 +1,13 @@
 #include "Utils.hpp"
 
-#include <vector>
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
+#include <vector>
 
 namespace vuren {
 
-std::vector<char> readFile(const std::string& filename) {
+std::vector<char> readFile(const std::string &filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
@@ -23,27 +23,26 @@ std::vector<char> readFile(const std::string& filename) {
     return buffer;
 }
 
-VkResult CreateDebugUtilsMessengerEXT(vk::Instance instance, 
-    const vk::DebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-    const vk::AllocationCallbacks* pAllocator,
-    vk::DebugUtilsMessengerEXT* pDebugMessenger) {
+VkResult CreateDebugUtilsMessengerEXT(vk::Instance instance, const vk::DebugUtilsMessengerCreateInfoEXT *pCreateInfo,
+                                      const vk::AllocationCallbacks *pAllocator,
+                                      vk::DebugUtilsMessengerEXT *pDebugMessenger) {
 
-        auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(static_cast<VkInstance>(instance), "vkCreateDebugUtilsMessengerEXT");
-        if (func != nullptr) {
-            return func(instance,
-                (VkDebugUtilsMessengerCreateInfoEXT*)pCreateInfo, 
-                (VkAllocationCallbacks*)pAllocator, 
-                (VkDebugUtilsMessengerEXT*)pDebugMessenger);
-        }
-        else {
-            return VK_ERROR_EXTENSION_NOT_PRESENT;
-        }
-    }
-
-void DestroyDebugUtilsMessengerEXT(vk::Instance instance, vk::DebugUtilsMessengerEXT debugMessenger, const vk::AllocationCallbacks* pAllocator) {
-    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(static_cast<VkInstance>(instance), "vkDestroyDebugUtilsMessengerEXT");
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(static_cast<VkInstance>(instance),
+                                                                           "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
-        func(instance, debugMessenger, (VkAllocationCallbacks*)pAllocator);
+        return func(instance, (VkDebugUtilsMessengerCreateInfoEXT *) pCreateInfo, (VkAllocationCallbacks *) pAllocator,
+                    (VkDebugUtilsMessengerEXT *) pDebugMessenger);
+    } else {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void DestroyDebugUtilsMessengerEXT(vk::Instance instance, vk::DebugUtilsMessengerEXT debugMessenger,
+                                   const vk::AllocationCallbacks *pAllocator) {
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(static_cast<VkInstance>(instance),
+                                                                            "vkDestroyDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        func(instance, debugMessenger, (VkAllocationCallbacks *) pAllocator);
     }
 }
 

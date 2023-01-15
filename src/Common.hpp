@@ -21,20 +21,20 @@ using vec4 = glm::vec4;
 using mat4 = glm::mat4x4;
 using uint = unsigned int;
 
-const uint32_t kWidth = 800;
+const uint32_t kWidth  = 800;
 const uint32_t kHeight = 600;
 // const int kMaxFramesInFlight = 1;
 
 struct Texture {
     std::string name;
-    vk::Image image {VK_NULL_HANDLE};
-    vk::DeviceMemory memory {VK_NULL_HANDLE};
-    vk::DescriptorImageInfo descriptorInfo {VK_NULL_HANDLE};
+    vk::Image image{ VK_NULL_HANDLE };
+    vk::DeviceMemory memory{ VK_NULL_HANDLE };
+    vk::DescriptorImageInfo descriptorInfo{ VK_NULL_HANDLE };
 };
 
 struct Buffer {
-    vk::DeviceMemory memory {VK_NULL_HANDLE};
-    vk::DescriptorBufferInfo descriptorInfo {VK_NULL_HANDLE};
+    vk::DeviceMemory memory{ VK_NULL_HANDLE };
+    vk::DescriptorBufferInfo descriptorInfo{ VK_NULL_HANDLE };
 };
 
 struct AccelerationStructure {
@@ -43,11 +43,11 @@ struct AccelerationStructure {
 };
 
 struct SceneObject {
-    uint vertexBufferSize {0};
-    uint indexBufferSize {0};
-    Buffer* vertexBuffer;
-    Buffer* indexBuffer;
-    uint instanceCount {0};
+    uint vertexBufferSize{ 0 };
+    uint indexBufferSize{ 0 };
+    Buffer *vertexBuffer;
+    Buffer *indexBuffer;
+    uint instanceCount{ 0 };
 };
 
 #endif // __cplusplus
@@ -67,27 +67,27 @@ struct Vertex {
         std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions{};
 
         // position
-        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].binding  = 0;
         attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = vk::Format::eR32G32B32Sfloat;
-        attributeDescriptions[0].offset = offsetof(Vertex, pos);
+        attributeDescriptions[0].format   = vk::Format::eR32G32B32Sfloat;
+        attributeDescriptions[0].offset   = offsetof(Vertex, pos);
 
         // normal
-        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].binding  = 0;
         attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].format = vk::Format::eR32G32B32Sfloat;
-        attributeDescriptions[1].offset = offsetof(Vertex, normal);
+        attributeDescriptions[1].format   = vk::Format::eR32G32B32Sfloat;
+        attributeDescriptions[1].offset   = offsetof(Vertex, normal);
 
         // uv coordinate
-        attributeDescriptions[2].binding = 0;
+        attributeDescriptions[2].binding  = 0;
         attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].format = vk::Format::eR32G32Sfloat;
-        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
+        attributeDescriptions[2].format   = vk::Format::eR32G32Sfloat;
+        attributeDescriptions[2].offset   = offsetof(Vertex, texCoord);
 
         return attributeDescriptions;
     }
 
-    bool operator==(const Vertex& other) const {
+    bool operator==(const Vertex &other) const {
         return pos == other.pos && normal == other.normal && texCoord == other.texCoord;
     }
 #endif // __cplusplus
@@ -141,11 +141,10 @@ struct PushConstantRay {
 } // namespace vuren
 
 namespace std {
-template<> struct hash<vuren::Vertex> {
-    size_t operator()(vuren::Vertex const& vertex) const {
-        return ((hash<glm::vec3>()(vertex.pos) ^
-                (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
-                (hash<glm::vec2>()(vertex.texCoord) << 1);
+template <> struct hash<vuren::Vertex> {
+    size_t operator()(vuren::Vertex const &vertex) const {
+        return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
+               (hash<glm::vec2>()(vertex.texCoord) << 1);
     }
 };
 } // namespace std
