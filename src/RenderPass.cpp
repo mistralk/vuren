@@ -163,7 +163,7 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
     std::vector<vk::DescriptorPoolSize> poolSizes(bindings.size());
     for (size_t i = 0; i < poolSizes.size(); ++i) {
         poolSizes[i].type = bindings[i].descriptorType;
-        poolSizes[i].descriptorCount = 1;
+        poolSizes[i].descriptorCount = bindings[i].descriptorCount;
     }        
     
     vk::DescriptorPoolCreateInfo poolInfo { 
@@ -221,10 +221,20 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
         else {
             switch (bindings[i].descriptorType) {
                 case vk::DescriptorType::eCombinedImageSampler:
-                    imageInfo = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
-                    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
+                    if (bindingInfos[i].name == "SceneTextures") {
+                        for (auto& texture : m_pScene->getTextures()) {
+                            imageInfo = m_pResourceManager->getTexture(texture.name).descriptorInfo;
+                            imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                            imageInfos.push_back(imageInfo);
+                        }
+                        write.pImageInfo = &imageInfos.back() - m_pScene->getTextures().size() + 1;
+                    }
+                    else {
+                        imageInfo = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                        imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                        imageInfos.push_back(imageInfo);
+                        write.pImageInfo = &imageInfos.back();
+                    }
                     break;
                 
                 case vk::DescriptorType::eStorageImage:
@@ -253,7 +263,7 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo>& bin
             write.dstSet = m_descriptorSet;
             write.dstBinding = static_cast<uint32_t>(i);
             write.dstArrayElement = 0;
-            write.descriptorCount = 1;
+            write.descriptorCount = bindings[i].descriptorCount;
             write.descriptorType = bindings[i].descriptorType;
             write.pTexelBufferView = nullptr;
         }

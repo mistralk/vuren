@@ -194,6 +194,11 @@ void VulkanContext::createLogicalDevice() {
         .bufferDeviceAddress = VK_TRUE,
         .bufferDeviceAddressCaptureReplay = VK_TRUE
     };
+    vk::PhysicalDeviceDescriptorIndexingFeaturesEXT descriptorIndexingFeature {
+        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount = VK_TRUE,
+        .runtimeDescriptorArray = VK_TRUE,
+    };
 
     vk::DeviceCreateInfo createInfo { 
         // .pNext = &accelFeature,
@@ -207,7 +212,8 @@ void VulkanContext::createLogicalDevice() {
     vk::StructureChain<vk::DeviceCreateInfo, 
                     vk::PhysicalDeviceAccelerationStructureFeaturesKHR, 
                     vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
-                    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT> chain = {createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature};
+                    vk::PhysicalDeviceBufferDeviceAddressFeaturesEXT,
+                    vk::PhysicalDeviceDescriptorIndexingFeaturesEXT> chain = {createInfo, accelFeature, rtPipelineFeature, bufferAddressFeature, descriptorIndexingFeature};
 
     if (kEnableValidationLayers) {
         createInfo.enabledLayerCount = static_cast<uint32_t>(kValidationLayers.size());

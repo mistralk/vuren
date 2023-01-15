@@ -102,7 +102,7 @@ public:
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
             {"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eRaygenKHR, 1}, 
-            {"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, static_cast<uint32_t>(m_pScene->getTextures().size())},
+            {"SceneTextures", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, static_cast<uint32_t>(m_pScene->getTextures().size())},
             {"Room_vertexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, 1},
             {"Room_indexBuffer", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eClosestHitKHR, 1},
             {"RtColor", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1}, // for ray tracing, writing to output image will be manually called by shader
@@ -595,7 +595,7 @@ public:
         // uniform buffers
         bindings.push_back({"CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1});
         // model textures
-        bindings.push_back({"ModelTexture", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, static_cast<uint32_t>(m_pScene->getTextures().size())});
+        bindings.push_back({"SceneTextures", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, static_cast<uint32_t>(m_pScene->getTextures().size())});
 
         createDescriptorSet(bindings);
 
@@ -1091,10 +1091,10 @@ private:
         m_pResourceManager->setCommandPool(m_commandPool);
 
         m_pResourceManager->createUniformBuffer<Camera>("CameraBuffer");
-        auto texture = m_pResourceManager->createModelTexture("ModelTexture", "textures/viking_room.png");
+        auto texture = m_pResourceManager->createModelTexture("VikingRoom", "textures/viking_room.png");
         m_pScene->addTexture(texture);
-        // auto texture1 = m_pResourceManager->createModelTexture("ModelTexture1", "textures/texture.jpg");
-        // m_pScene->addTexture(texture1);
+        auto texture1 = m_pResourceManager->createModelTexture("Statue", "textures/texture.jpg");
+        m_pScene->addTexture(texture1);
         auto object = m_pResourceManager->loadObjModel("Room", "models/viking_room.obj");
         m_pScene->addObject(object);
 

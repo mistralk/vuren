@@ -8,6 +8,7 @@ Currently it has only been tested on Ubuntu 22.04.
 
 ## Prerequisites
 
+- Graphics card and driver providing Vulkan 1.2+ support and hardware ray tracing
 - Vulkan SDK
 - glslangValidator
 - GLFW3

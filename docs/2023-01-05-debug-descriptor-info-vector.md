@@ -2,11 +2,14 @@
 
 2023-01-15
 
-- 현재 코드는 1 디스크립터 = 1 텍스쳐만 할당 가능하도록 되어있다. 
-- 셰이더에서 디스크립터 하나로 여러개의 텍스쳐에 액세스할 수 있도록 바꾸고 싶다. 
+- 현재 코드는 1 바인딩 = 1 텍스쳐만 할당 가능하도록 되어있다. 
+- 셰이더에서 바인딩 하나로 여러개의 텍스쳐에 액세스할 수 있도록 바꾸고 싶다. 
   - 특히 레이 트레이싱 셰이더에서는 씬 전체의 텍스쳐, 매터리얼 버퍼에 전부 접근할 수 있어야 좋을 것 같다.
   - bindless도 고려 대상이지만 나중에
-- 현재 단일 디스크립터의 카운트를 무조건 1로 설정하고 있으므로 이 부분을 수정해야 함
+  - 디스크립터 인덱싱
+    - https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceDescriptorIndexingFeatures.html
+    - https://github.com/SaschaWillems/Vulkan/blob/master/examples/descriptorindexing/descriptorindexing.cpp
+- 현재 단일 바인딩의 디스크립터 카운트를 무조건 1로 설정하고 있으므로 이 부분을 수정해야 함
 - 우선은 지저분한 descriptor set update 코드를 리팩토링부터 해야겠다.
 
 ### 버그
