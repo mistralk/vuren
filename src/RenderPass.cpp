@@ -178,9 +178,11 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bin
     std::vector<vk::WriteDescriptorSet> descriptorWrites;
     std::vector<vk::DescriptorBufferInfo> bufferInfos;
     std::vector<vk::DescriptorImageInfo> imageInfos;
+    std::vector<vk::WriteDescriptorSetAccelerationStructureKHR> tlasInfos;
 
     bufferInfos.reserve(totalDescriptorCount);
     imageInfos.reserve(totalDescriptorCount);
+    tlasInfos.reserve(totalDescriptorCount);
 
     for (size_t i = 0; i < bindings.size(); ++i) {
         vk::WriteDescriptorSet write;
@@ -189,18 +191,19 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bin
 
         write.pImageInfo  = nullptr;
         write.pBufferInfo = nullptr;
+        write.pNext  = nullptr; // for TLAS
 
         // top-level acceleration structures
         if (bindings[i].descriptorType == vk::DescriptorType::eAccelerationStructureKHR) {
-            vk::AccelerationStructureKHR tlas = m_rayTracingProperties.tlas.as;
-            vk::WriteDescriptorSetAccelerationStructureKHR descriptorSetAsInfo{ .accelerationStructureCount = 1,
-                                                                                .pAccelerationStructures    = &tlas };
+            vk::WriteDescriptorSetAccelerationStructureKHR descriptorSetAsInfo{ .accelerationStructureCount = bindings[i].descriptorCount,
+                                                                                .pAccelerationStructures    = &m_rayTracingProperties.tlas.as };
+            tlasInfos.push_back(descriptorSetAsInfo);
 
-            write.pNext            = (void *) &descriptorSetAsInfo;
+            write.pNext            = (void *)&tlasInfos.back();
             write.dstSet           = m_descriptorSet;
             write.dstBinding       = static_cast<uint32_t>(i);
             write.dstArrayElement  = 0;
-            write.descriptorCount  = 1;
+            write.descriptorCount  = bindings[i].descriptorCount;
             write.descriptorType   = bindings[i].descriptorType;
             write.pTexelBufferView = nullptr;
 

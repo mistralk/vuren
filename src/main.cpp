@@ -40,6 +40,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "Timer.hpp"
 #include "Utils.hpp"
 #include "VulkanContext.hpp"
+#include "shaders/HybridAO.h"
 
 namespace vuren {
 
@@ -47,6 +48,98 @@ namespace vuren {
 std::vector<std::string> kOffscreenOutputTextureNames;
 int kCurrentItem = 0;
 bool kDirty      = false;
+
+class HybridAOPass : public RenderPass {
+public:
+    HybridAOPass() : RenderPass(PipelineType::eRayTracing) {}
+
+    ~HybridAOPass() {}
+
+    void init(VulkanContext *pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager,
+              std::shared_ptr<Scene> pScene) {
+        m_pContext         = pContext;
+        m_commandPool      = commandPool;
+        m_pResourceManager = pResourceManager;
+        m_pScene           = pScene;
+
+        vk::PhysicalDeviceProperties2 prop2{ .pNext = &m_rtProperties };
+        m_pContext->m_physicalDevice.getProperties2(&prop2);
+
+        createBlas();
+        createTlas(m_pScene->getInstances());
+    }
+
+    void define() {
+        m_pResourceManager->createTextureRGBA32Sfloat("HybridAOOutput");
+        auto texture = m_pResourceManager->getTexture("HybridAOOutput");
+        transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
+                              vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
+                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
+
+        kOffscreenOutputTextureNames.push_back("HybridAOOutput");
+        
+        // prepare the AO variable buffer
+        m_pResourceManager->createUniformBuffer<AoData>("AoData");
+
+        // create a descriptor set
+        std::vector<ResourceBindingInfo> bindings = {
+            { "Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "AoData", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eRaygenKHR, 1},
+            { "RasterPosWorld", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "RasterNormalWorld", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "HybridAOOutput", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+        };
+        createDescriptorSet(bindings);
+
+        setupRayTracingPipeline("shaders/HybridAO.rgen.spv", "shaders/HybridAO.rmiss.spv",
+                                "shaders/HybridAO.rchit.spv");
+    }
+
+    void updateAoDataUniformBuffer(float radius, unsigned int frameCount) {
+        m_aoData.radius = radius;
+        m_aoData.frameCount = frameCount;
+        memcpy(m_pResourceManager->getMappedBuffer("AoData"), &m_aoData, sizeof(AoData));
+    }
+
+    void setup() override {
+        define();
+        createShaderBindingTable();
+    }
+
+    void record(vk::CommandBuffer commandBuffer) override {
+        auto texture = m_pResourceManager->getTexture("RasterPosWorld");
+        transitionImageLayout(commandBuffer, texture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
+
+        texture = m_pResourceManager->getTexture("RasterNormalWorld");
+        transitionImageLayout(commandBuffer, texture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
+        
+        commandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, m_pPipeline->getPipeline());
+
+        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, m_pPipeline->getPipelineLayout(), 0, 1,
+                                         &m_descriptorSet, 0, nullptr);
+
+        commandBuffer.traceRaysKHR(&m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_extent.width,
+                                   m_extent.height, 1);
+    }
+
+    void cleanup() {
+        m_pResourceManager->destroyBuffer(m_sbtBuffer);
+        m_pResourceManager->destroyBuffer(m_rayTracingProperties.tlas.buffer);
+        m_pContext->m_device.destroyAccelerationStructureKHR(m_rayTracingProperties.tlas.as);
+        for (auto &blas: m_rayTracingProperties.blas) {
+            m_pContext->m_device.destroyAccelerationStructureKHR(blas.as);
+            m_pResourceManager->destroyBuffer(blas.buffer);
+        }
+        RenderPass::cleanup();
+    }
+
+private:
+    AoData m_aoData;
+};
 
 class RayTracedGBufferPass : public RenderPass {
 public:
@@ -228,9 +321,9 @@ public:
 
     void record(vk::CommandBuffer commandBuffer) override {
         std::array<vk::ClearValue, 4> clearValues{};
-        clearValues[0].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f } };
-        clearValues[1].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f } };
-        clearValues[2].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f } };
+        clearValues[0].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
+        clearValues[1].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
+        clearValues[2].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
         clearValues[3].depthStencil = vk::ClearDepthStencilValue{ 1.0f, 0 };
 
         vk::RenderPassBeginInfo renderPassInfo{ .renderPass  = m_rasterProperties.renderPass,
@@ -436,7 +529,7 @@ public:
                 case vk::DescriptorType::eUniformBuffer:
                     bufferInfo.buffer = m_pResourceManager->getBuffer(bindings[i].name).descriptorInfo.buffer;
                     bufferInfo.offset = 0;
-                    bufferInfo.range  = sizeof(Camera);
+                    bufferInfo.range  = m_pResourceManager->getBuffer(bindings[i].name).descriptorInfo.range;
                     pBufferInfo       = &bufferInfo;
                     break;
 
@@ -500,6 +593,7 @@ private:
 
     RasterGBufferPass m_rasterGBufferPass;
     RayTracedGBufferPass m_rtGBufferPass;
+    HybridAOPass m_aoPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
@@ -642,14 +736,17 @@ private:
         m_pResourceManager->loadObjModel("Bunny", "assets/models/bunny.obj", m_pScene);
         m_pResourceManager->createObjectDeviceInfoBuffer(m_pScene);
 
-        // createRandomInstances(0, 20);
-        createRandomInstances(0, 30);
+        // createRandomInstances(0, 10);
+        createRandomInstances(0, 10);
 
         m_rasterGBufferPass.setup();
 
-        m_rtGBufferPass.setExtent(m_swapChainExtent);
-        m_rtGBufferPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        m_rtGBufferPass.setup();
+        // m_rtGBufferPass.setExtent(m_swapChainExtent);
+        // m_rtGBufferPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        // m_rtGBufferPass.setup();
+        m_aoPass.setExtent(m_swapChainExtent);
+        m_aoPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        m_aoPass.setup();
 
         m_finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages,
                                                     m_swapChainColorImageViews);
@@ -680,7 +777,8 @@ private:
         m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
 
         m_rasterGBufferPass.cleanup();
-        m_rtGBufferPass.cleanup();
+        // m_rtGBufferPass.cleanup();
+        m_aoPass.cleanup();
         m_finalRenderPass.cleanup();
 
         m_pResourceManager->destroyTextures();
@@ -902,13 +1000,19 @@ private:
             throw std::runtime_error("failed to begin recording command buffer!");
         }
 
-        updateUniformBuffer("CameraBuffer");
+        updateCameraBuffer("CameraBuffer");
 
-        if (kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedPosWorld" ||
-            kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedNormalWorld")
-            m_rtGBufferPass.record(commandBuffer);
-        else
-            m_rasterGBufferPass.record(commandBuffer);
+        static unsigned int frameCount = 0;
+        m_aoPass.updateAoDataUniformBuffer(0.0 + frameCount / 10000.0, frameCount++);
+
+        // if (kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedPosWorld" ||
+        //     kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedNormalWorld")
+        //     m_rtGBufferPass.record(commandBuffer);
+        // else
+        //     m_rasterGBufferPass.record(commandBuffer);
+        
+        m_rasterGBufferPass.record(commandBuffer);
+        m_aoPass.record(commandBuffer);
 
         auto outputTexture = m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]);
 
@@ -1048,7 +1152,7 @@ private:
         // updateFinalDescriptorSets();
     }
 
-    void updateUniformBuffer(std::string name) {
+    void updateCameraBuffer(std::string name) {
         static auto startTime = std::chrono::high_resolution_clock::now();
 
         auto currentTime = std::chrono::high_resolution_clock::now();
