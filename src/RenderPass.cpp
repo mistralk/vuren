@@ -3,9 +3,392 @@
 
 namespace vuren {
 
-void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo> &colorAttachmentInfos,
-                                    const AttachmentInfo &depthStencilAttachmentInfo) {
-    if (m_rasterProperties.renderPass) {
+// ------------------ RenderPass bass class ------------------
+
+RenderPass::RenderPass() {}
+
+RenderPass::~RenderPass() {}
+
+void RenderPass::init(VulkanContext *pContext, vk::CommandPool commandPool,
+                      std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
+    m_pContext         = pContext;
+    m_commandPool      = commandPool;
+    m_pResourceManager = pResourceManager;
+    m_pScene           = pScene;
+}
+
+void RenderPass::cleanup() {
+    if (m_descriptorPool)
+        m_pContext->m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
+    if (m_descriptorSetLayout)
+        m_pContext->m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
+    if (m_pipeline)
+        m_pContext->m_device.destroyPipeline(m_pipeline, nullptr);
+    if (m_pipelineLayout)
+        m_pContext->m_device.destroyPipelineLayout(m_pipelineLayout, nullptr);
+}
+
+void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bindingInfos) {
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    uint32_t totalDescriptorCount = 0;
+
+    // create a descriptor set
+    for (const auto &binding: bindingInfos) {
+        vk::DescriptorSetLayoutBinding layoutBinding{ .binding            = static_cast<uint32_t>(bindings.size()),
+                                                      .descriptorType     = binding.descriptorType,
+                                                      .descriptorCount    = binding.descriptorCount,
+                                                      .stageFlags         = binding.stageFlags,
+                                                      .pImmutableSamplers = nullptr };
+
+        bindings.push_back(layoutBinding);
+
+        totalDescriptorCount += binding.descriptorCount;
+    }
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{ .bindingCount = static_cast<uint32_t>(bindings.size()),
+                                                  .pBindings    = bindings.data() };
+
+    if (m_pContext->m_device.createDescriptorSetLayout(&layoutInfo, nullptr, &m_descriptorSetLayout) !=
+        vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a descriptor set layout!");
+    }
+
+    // create a descriptor pool
+    std::vector<vk::DescriptorPoolSize> poolSizes(bindings.size());
+    for (size_t i = 0; i < poolSizes.size(); ++i) {
+        poolSizes[i].type            = bindings[i].descriptorType;
+        poolSizes[i].descriptorCount = bindings[i].descriptorCount;
+    }
+
+    vk::DescriptorPoolCreateInfo poolInfo{ .maxSets       = 1,
+                                           .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+                                           .pPoolSizes    = poolSizes.data() };
+
+    if (m_pContext->m_device.createDescriptorPool(&poolInfo, nullptr, &m_descriptorPool) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a descriptor pool!");
+    }
+
+    // write a descriptor set
+    vk::DescriptorSetAllocateInfo allocInfo{ .descriptorPool     = m_descriptorPool,
+                                             .descriptorSetCount = 1,
+                                             .pSetLayouts        = &m_descriptorSetLayout };
+
+    if (m_pContext->m_device.allocateDescriptorSets(&allocInfo, &m_descriptorSet) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to allocate offscreen descriptor sets!");
+    }
+
+    std::vector<vk::WriteDescriptorSet> descriptorWrites;
+    std::vector<vk::DescriptorBufferInfo> bufferInfos;
+    std::vector<vk::DescriptorImageInfo> imageInfos;
+    std::vector<vk::WriteDescriptorSetAccelerationStructureKHR> tlasInfos;
+
+    bufferInfos.reserve(totalDescriptorCount);
+    imageInfos.reserve(totalDescriptorCount);
+    tlasInfos.reserve(totalDescriptorCount);
+
+    for (size_t i = 0; i < bindings.size(); ++i) {
+        vk::WriteDescriptorSet write;
+        vk::DescriptorBufferInfo bufferInfo;
+        vk::DescriptorImageInfo imageInfo;
+
+        write.pImageInfo  = nullptr;
+        write.pBufferInfo = nullptr;
+        write.pNext       = nullptr; // for TLAS
+
+        // top-level acceleration structures
+        if (bindings[i].descriptorType == vk::DescriptorType::eAccelerationStructureKHR) {
+            vk::WriteDescriptorSetAccelerationStructureKHR descriptorSetAsInfo{ .accelerationStructureCount =
+                                                                                    bindings[i].descriptorCount,
+                                                                                .pAccelerationStructures = &m_tlas.as };
+            tlasInfos.push_back(descriptorSetAsInfo);
+
+            write.pNext            = (void *) &tlasInfos.back();
+            write.dstSet           = m_descriptorSet;
+            write.dstBinding       = static_cast<uint32_t>(i);
+            write.dstArrayElement  = 0;
+            write.descriptorCount  = bindings[i].descriptorCount;
+            write.descriptorType   = bindings[i].descriptorType;
+            write.pTexelBufferView = nullptr;
+
+            descriptorWrites.push_back(write);
+            continue;
+        }
+
+        // specialized bindings for scene resourses
+        if (bindingInfos[i].name == "SceneTextures") {
+            assert(bindings[i].descriptorType == vk::DescriptorType::eCombinedImageSampler);
+            for (auto &texture: m_pScene->getTextures()) {
+                imageInfo             = m_pResourceManager->getTexture(texture.name).descriptorInfo;
+                imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                imageInfos.push_back(imageInfo);
+            }
+            write.pImageInfo = &imageInfos.back() - m_pScene->getTextures().size() + 1;
+        } else if (bindingInfos[i].name == "SceneObjects") {
+            assert(bindings[i].descriptorType == vk::DescriptorType::eStorageBuffer);
+            for (auto &buffer: m_pScene->getObjects()) {
+                bufferInfo = m_pResourceManager->getBuffer("SceneObjectDeviceInfo").descriptorInfo;
+                bufferInfos.push_back(bufferInfo);
+            }
+            write.pBufferInfo = &bufferInfos.back() - m_pScene->getObjects().size() + 1;
+        }
+
+        // everything else resources
+        else {
+            switch (bindings[i].descriptorType) {
+                case vk::DescriptorType::eCombinedImageSampler:
+                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    break;
+
+                case vk::DescriptorType::eStorageImage:
+                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                    imageInfo.imageLayout = vk::ImageLayout::eGeneral;
+                    imageInfos.push_back(imageInfo);
+                    write.pImageInfo = &imageInfos.back();
+                    break;
+
+                case vk::DescriptorType::eUniformBuffer:
+                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
+                    bufferInfos.push_back(bufferInfo);
+                    write.pBufferInfo = &bufferInfos.back();
+                    break;
+
+                case vk::DescriptorType::eStorageBuffer:
+                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
+                    bufferInfos.push_back(bufferInfo);
+                    write.pBufferInfo = &bufferInfos.back();
+                    break;
+
+                default:
+                    throw std::runtime_error("unsupported descriptor type!");
+            }
+        }
+
+        write.dstSet           = m_descriptorSet;
+        write.dstBinding       = static_cast<uint32_t>(i);
+        write.dstArrayElement  = 0;
+        write.descriptorCount  = bindings[i].descriptorCount;
+        write.descriptorType   = bindings[i].descriptorType;
+        write.pTexelBufferView = nullptr;
+
+        descriptorWrites.push_back(write);
+    }
+
+    m_pContext->m_device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(),
+                                              0, nullptr);
+}
+
+vk::ShaderModule RenderPass::createShaderModule(const std::vector<char> &code) {
+    vk::ShaderModuleCreateInfo createInfo{ .codeSize = code.size(),
+                                           .pCode    = reinterpret_cast<const uint32_t *>(code.data()) };
+
+    vk::ShaderModule shaderModule;
+    if (m_pContext->m_device.createShaderModule(&createInfo, nullptr, &shaderModule) != vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create shader module!");
+    }
+
+    return shaderModule;
+}
+
+// ------------------ RasterRenderPass class ------------------
+
+RasterRenderPass::RasterRenderPass() {}
+
+RasterRenderPass::~RasterRenderPass() {}
+
+void RasterRenderPass::init(VulkanContext *pContext, vk::CommandPool commandPool,
+                            std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
+    RenderPass::init(pContext, commandPool, pResourceManager, pScene);
+}
+
+void RasterRenderPass::setup() { define(); }
+
+void RasterRenderPass::cleanup() {
+    if (m_framebuffer)
+        m_pContext->m_device.destroyFramebuffer(m_framebuffer, nullptr);
+    if (m_renderPass)
+        m_pContext->m_device.destroyRenderPass(m_renderPass, nullptr);
+    RenderPass::cleanup();
+}
+
+void RasterRenderPass::setupRasterPipeline(const std::string &vertShaderPath, const std::string &fragShaderPath,
+                                           bool isBlitPass) {
+    if (!m_pContext->m_device || !m_descriptorSetLayout) {
+        throw std::runtime_error(
+            "pipeline setup failed! "
+            "logical device and descriptor set layout must be valid before the pipeline creation.");
+    }
+
+    m_vertShaderPath = vertShaderPath;
+    m_fragShaderPath = fragShaderPath;
+    m_isBiltPass     = isBlitPass;
+
+    // create a pipeline layout
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ .setLayoutCount         = 1,
+                                                     .pSetLayouts            = &m_descriptorSetLayout,
+                                                     .pushConstantRangeCount = 0,
+                                                     .pPushConstantRanges    = nullptr };
+
+    if (m_pContext->m_device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_pipelineLayout) !=
+        vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a pipeline layout!");
+    }
+
+    auto vertShaderCode = readFile(m_vertShaderPath);
+    auto fragShaderCode = readFile(m_fragShaderPath);
+
+    vk::ShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    vk::ShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{ .stage  = vk::ShaderStageFlagBits::eVertex,
+                                                           .module = vertShaderModule,
+                                                           .pName  = "main" };
+
+    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{ .stage  = vk::ShaderStageFlagBits::eFragment,
+                                                           .module = fragShaderModule,
+                                                           .pName  = "main" };
+
+    vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+    // Fixed function: Vertex input
+    // per-vertex data
+    auto vertexAttributeDescription = Vertex::getAttributeDescriptions();
+
+    // per-instance data
+    auto instanceAttributeDescription = ObjectInstance::getAttributeDescriptions();
+
+    std::vector<vk::VertexInputBindingDescription> bindingDescriptions = {
+        { 0, sizeof(Vertex), vk::VertexInputRate::eVertex },
+        { 1, sizeof(ObjectInstance), vk::VertexInputRate::eInstance }
+    };
+
+    for (uint32_t i = 0; i < vertexAttributeDescription.size(); ++i)
+        vertexAttributeDescription[i].binding = 0;
+
+    for (uint32_t i = 0; i < instanceAttributeDescription.size(); ++i)
+        instanceAttributeDescription[i].binding = 1;
+
+    // merge all vertex input data
+    std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
+    attributeDescriptions.insert(attributeDescriptions.end(), vertexAttributeDescription.begin(),
+                                 vertexAttributeDescription.end());
+    attributeDescriptions.insert(attributeDescriptions.end(), instanceAttributeDescription.begin(),
+                                 instanceAttributeDescription.end());
+
+    for (uint32_t i = 0; i < attributeDescriptions.size(); ++i)
+        attributeDescriptions[i].location = i;
+
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+    if (m_isBiltPass) {
+        vertexInputInfo.vertexBindingDescriptionCount   = 0;
+        vertexInputInfo.pVertexBindingDescriptions      = nullptr;
+        vertexInputInfo.vertexAttributeDescriptionCount = 0;
+        vertexInputInfo.pVertexAttributeDescriptions    = nullptr;
+    } else {
+        vertexInputInfo.vertexBindingDescriptionCount   = static_cast<uint32_t>(bindingDescriptions.size());
+        vertexInputInfo.pVertexBindingDescriptions      = bindingDescriptions.data();
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions    = attributeDescriptions.data();
+    }
+
+    // Fixed function: Input assembly
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly{ .topology = vk::PrimitiveTopology::eTriangleList,
+                                                            .primitiveRestartEnable = VK_FALSE };
+
+    // Fixed function: Viewport and scissor
+    std::vector<vk::DynamicState> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+
+    vk::PipelineDynamicStateCreateInfo dynamicState{ .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+                                                     .pDynamicStates    = dynamicStates.data() };
+
+    vk::PipelineViewportStateCreateInfo viewportState{ .viewportCount = 1, .scissorCount = 1 };
+
+    // Fixed function: Rasterizer
+    vk::PipelineRasterizationStateCreateInfo rasterizer{ .depthClampEnable        = VK_FALSE,
+                                                         .rasterizerDiscardEnable = VK_FALSE,
+                                                         .polygonMode             = vk::PolygonMode::eFill,
+                                                         .cullMode        = m_isBiltPass ? vk::CullModeFlagBits::eNone
+                                                                                         : vk::CullModeFlagBits::eBack,
+                                                         .frontFace       = vk::FrontFace::eCounterClockwise,
+                                                         .depthBiasEnable = VK_FALSE,
+                                                         .depthBiasConstantFactor = 0.0f,
+                                                         .depthBiasClamp          = 0.0f,
+                                                         .depthBiasSlopeFactor    = 0.0f,
+                                                         .lineWidth               = 1.0f };
+
+    // Fixed function: Multisampling
+    vk::PipelineMultisampleStateCreateInfo multisampling{ .rasterizationSamples  = vk::SampleCountFlagBits::e1,
+                                                          .sampleShadingEnable   = VK_FALSE,
+                                                          .minSampleShading      = 1.0f,
+                                                          .pSampleMask           = nullptr,
+                                                          .alphaToCoverageEnable = VK_FALSE,
+                                                          .alphaToOneEnable      = VK_FALSE };
+
+    // Fixed function: Depth and stencil testing
+    vk::PipelineDepthStencilStateCreateInfo depthStencil{ .depthTestEnable       = VK_TRUE,
+                                                          .depthWriteEnable      = VK_TRUE,
+                                                          .depthCompareOp        = vk::CompareOp::eLess,
+                                                          .depthBoundsTestEnable = VK_FALSE,
+                                                          .stencilTestEnable     = VK_FALSE,
+                                                          .front                 = {},
+                                                          .back                  = {},
+                                                          .minDepthBounds        = 0.0f,
+                                                          .maxDepthBounds        = 1.0f };
+
+    // Fixed function: Color blending
+    // default setup for color attachments
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{ .blendEnable         = VK_FALSE,
+                                                                .srcColorBlendFactor = vk::BlendFactor::eOne,
+                                                                .dstColorBlendFactor = vk::BlendFactor::eZero,
+                                                                .colorBlendOp        = vk::BlendOp::eAdd,
+                                                                .srcAlphaBlendFactor = vk::BlendFactor::eOne,
+                                                                .dstAlphaBlendFactor = vk::BlendFactor::eZero,
+                                                                .alphaBlendOp        = vk::BlendOp::eAdd,
+                                                                .colorWriteMask      = vk::ColorComponentFlagBits::eR |
+                                                                                  vk::ColorComponentFlagBits::eG |
+                                                                                  vk::ColorComponentFlagBits::eB |
+                                                                                  vk::ColorComponentFlagBits::eA };
+
+    std::vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachments(m_colorAttachmentCount,
+                                                                             colorBlendAttachment);
+
+    vk::PipelineColorBlendStateCreateInfo colorBlending{ .logicOpEnable   = VK_FALSE,
+                                                         .logicOp         = vk::LogicOp::eCopy,
+                                                         .attachmentCount = m_colorAttachmentCount,
+                                                         .pAttachments    = colorBlendAttachments.data(),
+                                                         .blendConstants =
+                                                             std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    vk::GraphicsPipelineCreateInfo pipelineInfo{ .stageCount          = 2,
+                                                 .pStages             = shaderStages,
+                                                 .pVertexInputState   = &vertexInputInfo,
+                                                 .pInputAssemblyState = &inputAssembly,
+                                                 .pViewportState      = &viewportState,
+                                                 .pRasterizationState = &rasterizer,
+                                                 .pMultisampleState   = &multisampling,
+                                                 .pDepthStencilState  = &depthStencil,
+                                                 .pColorBlendState    = &colorBlending,
+                                                 .pDynamicState       = &dynamicState,
+                                                 .layout              = m_pipelineLayout,
+                                                 .renderPass          = m_renderPass,
+                                                 .subpass             = 0,
+                                                 .basePipelineHandle  = VK_NULL_HANDLE,
+                                                 .basePipelineIndex   = -1 };
+
+    if (m_pContext->m_device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline) !=
+        vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create rasterization pipeline!");
+    }
+
+    m_pContext->m_device.destroyShaderModule(fragShaderModule, nullptr);
+    m_pContext->m_device.destroyShaderModule(vertShaderModule, nullptr);
+}
+
+void RasterRenderPass::createVkRenderPass(const std::vector<AttachmentInfo> &colorAttachmentInfos,
+                                          const AttachmentInfo &depthStencilAttachmentInfo) {
+    if (m_renderPass) {
         return;
     }
 
@@ -85,199 +468,70 @@ void RenderPass::createVkRenderPass(const std::vector<AttachmentInfo> &colorAtta
                                              .dependencyCount = 1,
                                              .pDependencies   = &dependency };
 
-    if (m_pContext->m_device.createRenderPass(&renderPassInfo, nullptr, &m_rasterProperties.renderPass) !=
-        vk::Result::eSuccess) {
+    if (m_pContext->m_device.createRenderPass(&renderPassInfo, nullptr, &m_renderPass) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create render pass!");
     }
 }
 
-void RenderPass::cleanup() {
-    if (m_rasterProperties.framebuffer)
-        m_pContext->m_device.destroyFramebuffer(m_rasterProperties.framebuffer, nullptr);
-    if (m_rasterProperties.renderPass)
-        m_pContext->m_device.destroyRenderPass(m_rasterProperties.renderPass, nullptr);
-    if (m_descriptorPool)
-        m_pContext->m_device.destroyDescriptorPool(m_descriptorPool, nullptr);
-    if (m_descriptorSetLayout)
-        m_pContext->m_device.destroyDescriptorSetLayout(m_descriptorSetLayout, nullptr);
-    m_pPipeline->cleanup();
-}
-
-void RenderPass::createFramebuffer(const std::vector<AttachmentInfo> &colorAttachmentInfos,
-                                   const AttachmentInfo &depthStencilAttachmentInfo) {
+void RasterRenderPass::createFramebuffer(const std::vector<AttachmentInfo> &colorAttachmentInfos,
+                                         const AttachmentInfo &depthStencilAttachmentInfo) {
     std::vector<vk::ImageView> attachments;
     for (const auto &attachment: colorAttachmentInfos) {
         attachments.push_back(attachment.imageView);
     }
     attachments.push_back(depthStencilAttachmentInfo.imageView);
 
-    vk::FramebufferCreateInfo framebufferInfo{ .renderPass      = m_rasterProperties.renderPass,
+    vk::FramebufferCreateInfo framebufferInfo{ .renderPass      = m_renderPass,
                                                .attachmentCount = static_cast<uint32_t>(attachments.size()),
                                                .pAttachments    = attachments.data(),
                                                .width           = m_extent.width,
                                                .height          = m_extent.height,
                                                .layers          = 1 };
 
-    if (m_pContext->m_device.createFramebuffer(&framebufferInfo, nullptr, &m_rasterProperties.framebuffer) !=
-        vk::Result::eSuccess) {
+    if (m_pContext->m_device.createFramebuffer(&framebufferInfo, nullptr, &m_framebuffer) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create framebuffer!");
     }
 
-    m_rasterProperties.colorAttachmentCount = static_cast<uint32_t>(colorAttachmentInfos.size());
+    m_colorAttachmentCount = static_cast<uint32_t>(colorAttachmentInfos.size());
 }
 
-void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bindingInfos) {
-    std::vector<vk::DescriptorSetLayoutBinding> bindings;
-    uint32_t totalDescriptorCount = 0;
+// ------------------ RayTracingRenderPass class ------------------
 
-    // create a descriptor set
-    for (const auto &binding: bindingInfos) {
-        vk::DescriptorSetLayoutBinding layoutBinding{ .binding            = static_cast<uint32_t>(bindings.size()),
-                                                      .descriptorType     = binding.descriptorType,
-                                                      .descriptorCount    = binding.descriptorCount,
-                                                      .stageFlags         = binding.stageFlags,
-                                                      .pImmutableSamplers = nullptr };
+RayTracingRenderPass::RayTracingRenderPass() {}
 
-        bindings.push_back(layoutBinding);
+RayTracingRenderPass::~RayTracingRenderPass() {}
 
-        totalDescriptorCount += binding.descriptorCount;
-    }
+void RayTracingRenderPass::init(VulkanContext *pContext, vk::CommandPool commandPool,
+                                std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene) {
+    RenderPass::init(pContext, commandPool, pResourceManager, pScene);
 
-    vk::DescriptorSetLayoutCreateInfo layoutInfo{ .bindingCount = static_cast<uint32_t>(bindings.size()),
-                                                  .pBindings    = bindings.data() };
+    vk::PhysicalDeviceProperties2 prop2{ .pNext = &m_rtProperties };
+    m_pContext->m_physicalDevice.getProperties2(&prop2);
 
-    if (m_pContext->m_device.createDescriptorSetLayout(&layoutInfo, nullptr, &m_descriptorSetLayout) !=
-        vk::Result::eSuccess) {
-        throw std::runtime_error("failed to create a descriptor set layout!");
-    }
-
-    // create a descriptor pool
-    std::vector<vk::DescriptorPoolSize> poolSizes(bindings.size());
-    for (size_t i = 0; i < poolSizes.size(); ++i) {
-        poolSizes[i].type            = bindings[i].descriptorType;
-        poolSizes[i].descriptorCount = bindings[i].descriptorCount;
-    }
-
-    vk::DescriptorPoolCreateInfo poolInfo{ .maxSets       = 1,
-                                           .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
-                                           .pPoolSizes    = poolSizes.data() };
-
-    if (m_pContext->m_device.createDescriptorPool(&poolInfo, nullptr, &m_descriptorPool) != vk::Result::eSuccess) {
-        throw std::runtime_error("failed to create a descriptor pool!");
-    }
-
-    // write a descriptor set
-    vk::DescriptorSetAllocateInfo allocInfo{ .descriptorPool     = m_descriptorPool,
-                                             .descriptorSetCount = 1,
-                                             .pSetLayouts        = &m_descriptorSetLayout };
-
-    if (m_pContext->m_device.allocateDescriptorSets(&allocInfo, &m_descriptorSet) != vk::Result::eSuccess) {
-        throw std::runtime_error("failed to allocate offscreen descriptor sets!");
-    }
-
-    std::vector<vk::WriteDescriptorSet> descriptorWrites;
-    std::vector<vk::DescriptorBufferInfo> bufferInfos;
-    std::vector<vk::DescriptorImageInfo> imageInfos;
-    std::vector<vk::WriteDescriptorSetAccelerationStructureKHR> tlasInfos;
-
-    bufferInfos.reserve(totalDescriptorCount);
-    imageInfos.reserve(totalDescriptorCount);
-    tlasInfos.reserve(totalDescriptorCount);
-
-    for (size_t i = 0; i < bindings.size(); ++i) {
-        vk::WriteDescriptorSet write;
-        vk::DescriptorBufferInfo bufferInfo;
-        vk::DescriptorImageInfo imageInfo;
-
-        write.pImageInfo  = nullptr;
-        write.pBufferInfo = nullptr;
-        write.pNext  = nullptr; // for TLAS
-
-        // top-level acceleration structures
-        if (bindings[i].descriptorType == vk::DescriptorType::eAccelerationStructureKHR) {
-            vk::WriteDescriptorSetAccelerationStructureKHR descriptorSetAsInfo{ .accelerationStructureCount = bindings[i].descriptorCount,
-                                                                                .pAccelerationStructures    = &m_rayTracingProperties.tlas.as };
-            tlasInfos.push_back(descriptorSetAsInfo);
-
-            write.pNext            = (void *)&tlasInfos.back();
-            write.dstSet           = m_descriptorSet;
-            write.dstBinding       = static_cast<uint32_t>(i);
-            write.dstArrayElement  = 0;
-            write.descriptorCount  = bindings[i].descriptorCount;
-            write.descriptorType   = bindings[i].descriptorType;
-            write.pTexelBufferView = nullptr;
-
-            descriptorWrites.push_back(write);
-            continue;
-        }
-
-        // specialized bindings for scene resourses
-        if (bindingInfos[i].name == "SceneTextures") {
-            assert(bindings[i].descriptorType == vk::DescriptorType::eCombinedImageSampler);
-            for (auto &texture: m_pScene->getTextures()) {
-                imageInfo             = m_pResourceManager->getTexture(texture.name).descriptorInfo;
-                imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                imageInfos.push_back(imageInfo);
-            }
-            write.pImageInfo = &imageInfos.back() - m_pScene->getTextures().size() + 1;
-        } else if (bindingInfos[i].name == "SceneObjects") {
-            assert(bindings[i].descriptorType == vk::DescriptorType::eStorageBuffer);
-            for (auto &buffer: m_pScene->getObjects()) {
-                bufferInfo = m_pResourceManager->getBuffer("SceneObjectDeviceInfo").descriptorInfo;
-                bufferInfos.push_back(bufferInfo);
-            }
-            write.pBufferInfo = &bufferInfos.back() - m_pScene->getObjects().size() + 1;
-        }
-
-        // everything else resources
-        else {
-            switch (bindings[i].descriptorType) {
-                case vk::DescriptorType::eCombinedImageSampler:
-                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
-                    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    break;
-
-                case vk::DescriptorType::eStorageImage:
-                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
-                    imageInfo.imageLayout = vk::ImageLayout::eGeneral;
-                    imageInfos.push_back(imageInfo);
-                    write.pImageInfo = &imageInfos.back();
-                    break;
-
-                case vk::DescriptorType::eUniformBuffer:
-                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
-                    bufferInfos.push_back(bufferInfo);
-                    write.pBufferInfo = &bufferInfos.back();
-                    break;
-
-                case vk::DescriptorType::eStorageBuffer:
-                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
-                    bufferInfos.push_back(bufferInfo);
-                    write.pBufferInfo = &bufferInfos.back();
-                    break;
-
-                default:
-                    throw std::runtime_error("unsupported descriptor type!");
-            }
-        }
-
-        write.dstSet           = m_descriptorSet;
-        write.dstBinding       = static_cast<uint32_t>(i);
-        write.dstArrayElement  = 0;
-        write.descriptorCount  = bindings[i].descriptorCount;
-        write.descriptorType   = bindings[i].descriptorType;
-        write.pTexelBufferView = nullptr;
-
-        descriptorWrites.push_back(write);
-    }
-
-    m_pContext->m_device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(),
-                                              0, nullptr);
+    createBlas();
+    createTlas(m_pScene->getInstances());
 }
 
-RenderPass::BlasInput RenderPass::objectToVkGeometryKHR(const SceneObject &object) {
+void RayTracingRenderPass::setup() {
+    define();
+    createShaderBindingTable();
+}
+
+void RayTracingRenderPass::cleanup() {
+    m_pResourceManager->destroyBuffer(m_sbtBuffer);
+    m_pResourceManager->destroyBuffer(m_tlas.buffer);
+    if (m_tlas.as)
+        m_pContext->m_device.destroyAccelerationStructureKHR(m_tlas.as);
+    for (auto &blas: m_blas) {
+        if (blas.as) {
+            m_pContext->m_device.destroyAccelerationStructureKHR(blas.as);
+        }
+        m_pResourceManager->destroyBuffer(blas.buffer);
+    }
+    RenderPass::cleanup();
+}
+
+RayTracingRenderPass::BlasInput RayTracingRenderPass::objectToVkGeometryKHR(const SceneObject &object) {
     // only the position attribute is needed for the AS build.
     // if position is not the first member of Vertex,
     // we have to manually adjust vertexAddress using offsetof.
@@ -314,7 +568,8 @@ RenderPass::BlasInput RenderPass::objectToVkGeometryKHR(const SceneObject &objec
 }
 
 // generate one BLAS for each BlasInput
-void RenderPass::buildBlas(const std::vector<BlasInput> &input, vk::BuildAccelerationStructureFlagsKHR flags) {
+void RayTracingRenderPass::buildBlas(const std::vector<BlasInput> &input,
+                                     vk::BuildAccelerationStructureFlagsKHR flags) {
 
     uint32_t blasCount            = static_cast<uint32_t>(input.size());
     vk::DeviceSize asTotalSize    = 0; // all aloocated BLAS
@@ -472,14 +727,14 @@ void RenderPass::buildBlas(const std::vector<BlasInput> &input, vk::BuildAcceler
     }
 
     for (auto &b: buildAs) {
-        m_rayTracingProperties.blas.emplace_back(b.as);
+        m_blas.emplace_back(b.as);
     }
 
     m_pContext->m_device.destroyQueryPool(queryPool, nullptr);
     m_pResourceManager->destroyBuffer(scratchBuffer);
 }
 
-void RenderPass::createBlas() {
+void RayTracingRenderPass::createBlas() {
     // BLAS stores each primitive in a geometry.
     std::vector<BlasInput> allBlas;
     allBlas.reserve(m_pScene->getObjects().size());
@@ -492,9 +747,9 @@ void RenderPass::createBlas() {
     buildBlas(allBlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
-void RenderPass::buildTlas(const std::vector<vk::AccelerationStructureInstanceKHR> &instances,
-                           vk::BuildAccelerationStructureFlagsKHR flags, bool update) {
-    assert(m_rayTracingProperties.tlas.as == vk::AccelerationStructureKHR{ VK_NULL_HANDLE } || update);
+void RayTracingRenderPass::buildTlas(const std::vector<vk::AccelerationStructureInstanceKHR> &instances,
+                                     vk::BuildAccelerationStructureFlagsKHR flags, bool update) {
+    assert(m_tlas.as == vk::AccelerationStructureKHR{ VK_NULL_HANDLE } || update);
     uint32_t instanceCount = static_cast<uint32_t>(instances.size());
 
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(*m_pContext, m_commandPool);
@@ -541,7 +796,7 @@ void RenderPass::buildTlas(const std::vector<vk::AccelerationStructureInstanceKH
                                                        .type = vk::AccelerationStructureTypeKHR::eTopLevel };
 
     // create TLAS
-    m_pResourceManager->createAs(createInfo, m_rayTracingProperties.tlas);
+    m_pResourceManager->createAs(createInfo, m_tlas);
 
     // allocate the scratch memory
     Buffer scratchBuffer             = m_pResourceManager->createBuffer(sizeInfo.buildScratchSize,
@@ -552,7 +807,7 @@ void RenderPass::buildTlas(const std::vector<vk::AccelerationStructureInstanceKH
 
     // update build information
     buildInfo.srcAccelerationStructure  = VK_NULL_HANDLE;
-    buildInfo.dstAccelerationStructure  = m_rayTracingProperties.tlas.as;
+    buildInfo.dstAccelerationStructure  = m_tlas.as;
     buildInfo.scratchData.deviceAddress = scratchAddress;
 
     // build offsets info: n instances
@@ -570,7 +825,7 @@ void RenderPass::buildTlas(const std::vector<vk::AccelerationStructureInstanceKH
     m_pResourceManager->destroyBuffer(instanceBuffer);
 }
 
-void RenderPass::createTlas(const std::vector<ObjectInstance> &instances) {
+void RayTracingRenderPass::createTlas(const std::vector<ObjectInstance> &instances) {
     // TLAS is the entry point in the rt scene description
     std::vector<vk::AccelerationStructureInstanceKHR> tlas;
     tlas.reserve(instances.size());
@@ -586,9 +841,8 @@ void RenderPass::createTlas(const std::vector<ObjectInstance> &instances) {
         };
 
         vk::DeviceAddress blasAddress;
-        vk::AccelerationStructureDeviceAddressInfoKHR addressInfo = {
-            .accelerationStructure = m_rayTracingProperties.blas[instance.objectId].as
-        };
+        vk::AccelerationStructureDeviceAddressInfoKHR addressInfo = { .accelerationStructure =
+                                                                          m_blas[instance.objectId].as };
         blasAddress = m_pContext->m_device.getAccelerationStructureAddressKHR(addressInfo);
 
         vk::AccelerationStructureInstanceKHR rayInstance{
@@ -606,9 +860,11 @@ void RenderPass::createTlas(const std::vector<ObjectInstance> &instances) {
     buildTlas(tlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
-uint32_t RenderPass::align_up(uint32_t size, uint32_t alignment) { return (size + (alignment - 1)) & ~(alignment - 1); }
+uint32_t RayTracingRenderPass::align_up(uint32_t size, uint32_t alignment) {
+    return (size + (alignment - 1)) & ~(alignment - 1);
+}
 
-void RenderPass::createShaderBindingTable() {
+void RayTracingRenderPass::createShaderBindingTable() {
     uint32_t missCount   = 1;
     uint32_t hitCount    = 1;
     uint32_t handleCount = 1 + missCount + hitCount;
@@ -629,8 +885,8 @@ void RenderPass::createShaderBindingTable() {
     // fetch the shader group handles of the pipeline
     uint32_t dataSize = handleCount * handleSize;
     std::vector<uint8_t> handles(dataSize);
-    if (m_pContext->m_device.getRayTracingShaderGroupHandlesKHR(m_pPipeline->getPipeline(), 0, handleCount, dataSize,
-                                                                handles.data()) != vk::Result::eSuccess) {
+    if (m_pContext->m_device.getRayTracingShaderGroupHandlesKHR(m_pipeline, 0, handleCount, dataSize, handles.data()) !=
+        vk::Result::eSuccess) {
         throw std::runtime_error("failed to get ray tracing shader group handles!");
     }
 
@@ -680,30 +936,98 @@ void RenderPass::createShaderBindingTable() {
     m_pContext->m_device.unmapMemory(m_sbtBuffer.memory);
 }
 
-void RenderPass::setupRasterPipeline(const std::string &vertShaderPath, const std::string &fragShaderPath,
-                                     bool isBlitPass) {
-    assert(m_pipelineType == PipelineType::eRasterization);
+void RayTracingRenderPass::setupRayTracingPipeline(const std::string &raygenShaderPath,
+                                                   const std::string &missShaderPath,
+                                                   const std::string &closestHitShaderPath) {
+    m_raygenShaderPath     = raygenShaderPath;
+    m_missShaderPath       = missShaderPath;
+    m_closestHitShaderPath = closestHitShaderPath;
 
-    m_rasterProperties.vertShaderPath = vertShaderPath;
-    m_rasterProperties.fragShaderPath = fragShaderPath;
-    m_rasterProperties.isBiltPass     = isBlitPass;
+    enum StageIndices { eRaygen, eMiss, eClosestHit, eShaderGroupCount };
 
-    m_pPipeline = std::make_unique<RasterizationPipeline>(m_pContext, m_descriptorSetLayout, m_rasterProperties);
+    auto raygenShaderCode     = readFile(m_raygenShaderPath);
+    auto missShaderCode       = readFile(m_missShaderPath);
+    auto closestHitShaderCode = readFile(m_closestHitShaderPath);
 
-    m_pPipeline->setup();
-}
+    std::array<vk::PipelineShaderStageCreateInfo, eShaderGroupCount> stages{};
+    vk::PipelineShaderStageCreateInfo stage{ .pName = "main" };
 
-void RenderPass::setupRayTracingPipeline(const std::string &raygenShaderPath, const std::string &missShaderPath,
-                                         const std::string &closestHitShaderPath) {
-    assert(m_pipelineType == PipelineType::eRayTracing);
+    // raygen
+    stage.module    = createShaderModule(raygenShaderCode);
+    stage.stage     = vk::ShaderStageFlagBits::eRaygenKHR;
+    stages[eRaygen] = stage;
 
-    m_rayTracingProperties.raygenShaderPath     = raygenShaderPath;
-    m_rayTracingProperties.missShaderPath       = missShaderPath;
-    m_rayTracingProperties.closestHitShaderPath = closestHitShaderPath;
+    // miss
+    stage.module  = createShaderModule(missShaderCode);
+    stage.stage   = vk::ShaderStageFlagBits::eMissKHR;
+    stages[eMiss] = stage;
 
-    m_pPipeline = std::make_unique<RayTracingPipeline>(m_pContext, m_descriptorSetLayout, m_rayTracingProperties);
+    // hit group - closest hit
+    stage.module        = createShaderModule(closestHitShaderCode);
+    stage.stage         = vk::ShaderStageFlagBits::eClosestHitKHR;
+    stages[eClosestHit] = stage;
 
-    m_pPipeline->setup();
+    // shader groups
+    vk::RayTracingShaderGroupCreateInfoKHR group{ .generalShader      = VK_SHADER_UNUSED_KHR,
+                                                  .closestHitShader   = VK_SHADER_UNUSED_KHR,
+                                                  .anyHitShader       = VK_SHADER_UNUSED_KHR,
+                                                  .intersectionShader = VK_SHADER_UNUSED_KHR };
+
+    // raygen
+    group.type          = vk::RayTracingShaderGroupTypeKHR::eGeneral;
+    group.generalShader = eRaygen;
+    m_shaderGroups.push_back(group);
+
+    // miss
+    group.type          = vk::RayTracingShaderGroupTypeKHR::eGeneral;
+    group.generalShader = eMiss;
+    m_shaderGroups.push_back(group);
+
+    // closest hit
+    group.type             = vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup;
+    group.generalShader    = VK_SHADER_UNUSED_KHR;
+    group.closestHitShader = eClosestHit;
+    m_shaderGroups.push_back(group);
+
+    // setup the pipeline layout that will describe how the pipeline will access external data
+
+    // define the push constant range used by the pipeline layout
+
+    vk::PushConstantRange pushConstantRange{ .stageFlags = vk::ShaderStageFlagBits::eRaygenKHR |
+                                                           vk::ShaderStageFlagBits::eClosestHitKHR |
+                                                           vk::ShaderStageFlagBits::eMissKHR,
+                                             .offset = 0,
+                                             .size   = sizeof(PushConstantRay) };
+
+    vk::PipelineLayoutCreateInfo layoutCreateInfo{ .setLayoutCount         = 1,
+                                                   .pSetLayouts            = &m_descriptorSetLayout,
+                                                   .pushConstantRangeCount = 1,
+                                                   .pPushConstantRanges    = &pushConstantRange };
+
+    if (m_pContext->m_device.createPipelineLayout(&layoutCreateInfo, nullptr, &m_pipelineLayout) !=
+        vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create a pipeline layout!");
+    }
+
+    // ray tracing pipeline can contain an arbitrary number of stages
+    // depending on the number of active shaders in the scene.
+
+    // assemble the shader stages and recursion depth info
+    vk::RayTracingPipelineCreateInfoKHR rtPipelineInfo{ .stageCount = static_cast<uint32_t>(stages.size()),
+                                                        .pStages    = stages.data(),
+                                                        .groupCount = static_cast<uint32_t>(m_shaderGroups.size()),
+                                                        .pGroups    = m_shaderGroups.data(),
+                                                        .maxPipelineRayRecursionDepth = 1,
+                                                        .layout                       = m_pipelineLayout };
+
+    if (m_pContext->m_device.createRayTracingPipelinesKHR({}, {}, 1, &rtPipelineInfo, nullptr, &m_pipeline) !=
+        vk::Result::eSuccess) {
+        throw std::runtime_error("failed to create ray tracing pipelines");
+    }
+
+    for (auto &stage: stages) {
+        m_pContext->m_device.destroyShaderModule(stage.module, nullptr);
+    }
 }
 
 }; // namespace vuren

@@ -8,8 +8,6 @@ target_sources(vuren PRIVATE
     ResourceManager.cpp
     Scene.hpp
     Scene.cpp
-    Pipeline.hpp
-    Pipeline.cpp
     RenderPass.hpp
     RenderPass.cpp
     Timer.hpp
