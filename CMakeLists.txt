@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 
 project(vuren)
 add_executable(vuren)
@@ -12,6 +12,7 @@ set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD_REQUIRED ON)
 set_target_properties(vuren PROPERTIES CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(src)
+target_include_directories(vuren PRIVATE src)
 
 target_include_directories(vuren PRIVATE ext)
 target_include_directories(vuren PRIVATE ext/imgui)
@@ -34,18 +35,23 @@ target_link_libraries(vuren PRIVATE
 # compile shaders
 # reference: https://github.com/zeux/niagara/blob/master/CMakeLists.txt
 set(GLSLANG_VALIDATOR "glslangValidator")
-file(GLOB_RECURSE GLSL_SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/shaders/*.glsl")
+file(GLOB_RECURSE GLSL_SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.glsl")
 
 foreach(GLSL_SOURCE_FILE ${GLSL_SOURCE_FILES})
     message(STATUS "Load shader: ${GLSL_SOURCE_FILE}")
+    
+    cmake_path(SET GLSL_SOURCE_PATH ${GLSL_SOURCE_FILE})
+    cmake_path(GET GLSL_SOURCE_PATH PARENT_PATH SHADER_PARENT)
+    file(RELATIVE_PATH PARENT_PATH ${PROJECT_SOURCE_DIR}/src ${SHADER_PARENT})
+    make_directory("${CMAKE_CURRENT_BINARY_DIR}/shaders/${PARENT_PATH}")
     get_filename_component(STEM ${GLSL_SOURCE_FILE} NAME_WLE)
-    set(SPIRV_OUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/${STEM}.spv")
+
+    set(SPIRV_OUT "${CMAKE_CURRENT_BINARY_DIR}/shaders/${PARENT_PATH}/${STEM}.spv")
     
     add_custom_command(
         COMMENT "Compiling shader"
         OUTPUT ${SPIRV_OUT}
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/shaders/"
-        COMMAND ${GLSLANG_VALIDATOR} -V ${GLSL_SOURCE_FILE} -o ${SPIRV_OUT} --target-env spirv1.5
+        COMMAND ${GLSLANG_VALIDATOR} -V ${GLSL_SOURCE_FILE} -I"${PROJECT_SOURCE_DIR}/src" -I"${PROJECT_SOURCE_DIR}/src/shaders" -o ${SPIRV_OUT} --target-env spirv1.5
         DEPENDS ${GLSL_SOURCE_FILE}
     )
 

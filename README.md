@@ -2,9 +2,9 @@
 
 ![teaser](./docs/imgs/2023-01-15-21-58-34.png)
 
-A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by several tutorials and examples. I started this project with following the great [Vulkan Tutorial](https://vulkan-tutorial.com/), but now it has a slightly different architecture and additional features.
+A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by several tutorials and examples. I started this project with following the great [Vulkan Tutorial](https://vulkan-tutorial.com/), but now it has a different architecture and additional features.
 
-Currently it has only been tested on Ubuntu 22.04.
+Currently it has only been tested on Ubuntu 22.04 and NVIDIA RTX GPU.
 
 ## Prerequisites
 
@@ -16,12 +16,16 @@ Currently it has only been tested on Ubuntu 22.04.
 
 ## Features
 
-- [x] Vulkan context initialization and some wrappers
-- [x] Render pass abstraction
+- [x] Vulkan context initialization
+- [x] OBJ mesh loading and instanced rendering
+- [x] Rendering resource management
 - [x] GUI
-- [x] Rasterized G-buffer rendering pass template
-- [x] Ray-traced G-buffer rendering pass template
-- [ ] Reference unbiased path tracer
+- [x] Render pass abstraction
+- [x] Render pass templates
+    - [x] Rasterized G-buffer rendering
+    - [x] Ray-traced G-buffer rendering
+    - [x] Ray-traced ambient occlusion
+    - [ ] Reference unbiased path tracer
 - [ ] Cemera manipulation
 
 ## Licenses

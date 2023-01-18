@@ -1,0 +1,4 @@
+#ifndef GBUFFER_COMMON_H
+#define GBUFFER_COMMON_H
+
+#endif // GBUFFER_COMMON_H

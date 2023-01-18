@@ -4,8 +4,9 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
-#include "../Common.hpp"
-#include "ShaderCommon.h"
+#include "Common.hpp"
+#include "GBufferCommon.h"
+#include "CommonShaders/HitData.h"
 
 layout(location = 0) rayPayloadEXT SurfaceHit payload;
 

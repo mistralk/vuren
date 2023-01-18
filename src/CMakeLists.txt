@@ -14,3 +14,6 @@ target_sources(vuren PRIVATE
     Timer.cpp
     main.cpp
 )
+
+file(GLOB_RECURSE RENDER_PASS_SOURCES "RenderPasses/*.cpp" "RenderPasses/*.hpp")
+target_sources(vuren PRIVATE ${RENDER_PASS_SOURCES})

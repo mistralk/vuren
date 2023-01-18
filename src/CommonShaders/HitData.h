@@ -1,5 +1,5 @@
-#ifndef SHADER_COMMON_H
-#define SHADER_COMMON_H
+#ifndef HIT_DATA_H
+#define HIT_DATA_H
 
 struct SurfaceHit {
     vec3 worldPos;
@@ -15,8 +15,4 @@ SurfaceHit getInitialValues() {
     return hit;
 }
 
-// struct HitPayload {
-//     vec3 hitValue;
-// };
-
-#endif // SHADER_COMMON_H
+#endif // HIT_DATA_H

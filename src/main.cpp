@@ -40,288 +40,11 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "Timer.hpp"
 #include "Utils.hpp"
 #include "VulkanContext.hpp"
-#include "shaders/HybridAO.h"
+#include "RenderPasses/AmbientOcclusionPass/AmbientOcclusionPass.hpp"
+#include "RenderPasses/GBufferPass/RayTracedGBufferPass.hpp"
+#include "RenderPasses/GBufferPass/RasterGBufferPass.hpp"
 
 namespace vuren {
-
-// temporary: for output texture control in GUI
-std::vector<std::string> kOffscreenOutputTextureNames;
-int kCurrentItem = 0;
-bool kDirty      = false;
-
-class HybridAOPass : public RayTracingRenderPass {
-public:
-    HybridAOPass() {}
-
-    ~HybridAOPass() {}
-
-    void init(VulkanContext *pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager,
-              std::shared_ptr<Scene> pScene) override {
-        RayTracingRenderPass::init(pContext, commandPool, pResourceManager, pScene);
-    }
-
-    void define() override {
-        m_pResourceManager->createTextureRGBA32Sfloat("HybridAOOutput");
-        auto texture = m_pResourceManager->getTexture("HybridAOOutput");
-        transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
-                              vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
-        kOffscreenOutputTextureNames.push_back("HybridAOOutput");
-
-        // prepare the AO variable buffer
-        m_pResourceManager->createUniformBuffer<AoData>("AoData");
-
-        // create a descriptor set
-        std::vector<ResourceBindingInfo> bindings = {
-            { "Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "AoData", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "RasterPosWorld", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "RasterNormalWorld", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "HybridAOOutput", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-        };
-        createDescriptorSet(bindings);
-
-        setupRayTracingPipeline("shaders/HybridAO.rgen.spv", "shaders/HybridAO.rmiss.spv",
-                                "shaders/HybridAO.rchit.spv");
-    }
-
-    void record(vk::CommandBuffer commandBuffer) override {
-        auto texture = m_pResourceManager->getTexture("RasterPosWorld");
-        transitionImageLayout(commandBuffer, texture, vk::ImageLayout::eColorAttachmentOptimal,
-                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
-        texture = m_pResourceManager->getTexture("RasterNormalWorld");
-        transitionImageLayout(commandBuffer, texture, vk::ImageLayout::eColorAttachmentOptimal,
-                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, m_pipeline);
-
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, m_pipelineLayout, 0, 1,
-                                         &m_descriptorSet, 0, nullptr);
-
-        commandBuffer.traceRaysKHR(&m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_extent.width,
-                                   m_extent.height, 1);
-    }
-
-    void updateAoDataUniformBuffer(float radius, unsigned int frameCount) {
-        m_aoData.radius     = radius;
-        m_aoData.frameCount = frameCount;
-        memcpy(m_pResourceManager->getMappedBuffer("AoData"), &m_aoData, sizeof(AoData));
-    }
-
-private:
-    AoData m_aoData;
-};
-
-class RayTracedGBufferPass : public RayTracingRenderPass {
-public:
-    RayTracedGBufferPass() {}
-
-    ~RayTracedGBufferPass() {}
-
-    void init(VulkanContext *pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager,
-              std::shared_ptr<Scene> pScene) override {
-        RayTracingRenderPass::init(pContext, commandPool, pResourceManager, pScene);
-    }
-
-    void define() override {
-        // for ray tracing, writing to output image will be manually called by shader
-        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedPosWorld");
-        auto texture = m_pResourceManager->getTexture("RayTracedPosWorld");
-        transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
-                              vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
-        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedNormalWorld");
-        texture = m_pResourceManager->getTexture("RayTracedNormalWorld");
-        transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
-                              vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
-        kOffscreenOutputTextureNames.push_back("RayTracedPosWorld");
-        kOffscreenOutputTextureNames.push_back("RayTracedNormalWorld");
-
-        // create a descriptor set
-        std::vector<ResourceBindingInfo> bindings = {
-            { "CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "SceneTextures", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eClosestHitKHR,
-              static_cast<uint32_t>(m_pScene->getTextures().size()) },
-            { "SceneObjects", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eClosestHitKHR,
-              static_cast<uint32_t>(m_pScene->getObjects().size()) },
-            { "RayTracedPosWorld", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "RayTracedNormalWorld", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "GBufferTlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR,
-              1 } // name doesn't matter for AS
-        };
-        createDescriptorSet(bindings);
-
-        setupRayTracingPipeline("shaders/RayTracedGBuffer.rgen.spv", "shaders/RayTracedGBuffer.rmiss.spv",
-                                "shaders/RayTracedGBuffer.rchit.spv");
-    }
-
-    void record(vk::CommandBuffer commandBuffer) override {
-        m_pcRay.clearColor     = vec4(0.0f, 1.0f, 0.0f, 0.0f);
-        m_pcRay.lightIntensity = 1;
-
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, m_pipeline);
-
-        commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, m_pipelineLayout, 0, 1,
-                                         &m_descriptorSet, 0, nullptr);
-
-        commandBuffer.pushConstants(m_pipelineLayout,
-                                    vk::ShaderStageFlagBits::eRaygenKHR | vk::ShaderStageFlagBits::eClosestHitKHR |
-                                        vk::ShaderStageFlagBits::eMissKHR,
-                                    0, sizeof(PushConstantRay), &m_pcRay);
-
-        commandBuffer.traceRaysKHR(&m_rgenRegion, &m_missRegion, &m_hitRegion, &m_callRegion, m_extent.width,
-                                   m_extent.height, 2);
-    }
-
-    void cleanup() { RayTracingRenderPass::cleanup(); }
-
-private:
-    PushConstantRay m_pcRay;
-};
-
-class RasterGBufferPass : public RasterRenderPass {
-public:
-    RasterGBufferPass() {}
-
-    ~RasterGBufferPass() {}
-
-    void init(VulkanContext *pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager,
-              std::shared_ptr<Scene> pScene) override {
-        RasterRenderPass::init(pContext, commandPool, pResourceManager, pScene);
-    }
-
-    void define() override {
-        // create textures for the attachments
-        m_pResourceManager->createTextureRGBA32Sfloat("RasterColor");
-        m_pResourceManager->createTextureRGBA32Sfloat("RasterPosWorld");
-        m_pResourceManager->createTextureRGBA32Sfloat("RasterNormalWorld");
-        m_pResourceManager->createDepthTexture("RasterDepth");
-
-        kOffscreenOutputTextureNames.push_back("RasterColor");
-        kOffscreenOutputTextureNames.push_back("RasterPosWorld");
-        kOffscreenOutputTextureNames.push_back("RasterNormalWorld");
-
-        // create a descriptor set
-        std::vector<ResourceBindingInfo> bindings;
-
-        // uniform buffers
-        bindings.push_back({ "CameraBuffer", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1 });
-        // model textures
-        bindings.push_back({ "SceneTextures", vk::DescriptorType::eCombinedImageSampler,
-                             vk::ShaderStageFlagBits::eFragment,
-                             static_cast<uint32_t>(m_pScene->getTextures().size()) });
-
-        createDescriptorSet(bindings);
-
-        // create framebuffers for the attachments
-        std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView     = m_pResourceManager->getTexture("RasterColor").descriptorInfo.imageView,
-              .format        = vk::Format::eR32G32B32A32Sfloat,
-              .oldLayout     = vk::ImageLayout::eUndefined,
-              .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
-              .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-              .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-              .srcAccessMask = vk::AccessFlagBits::eNone,
-              .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite },
-            { .imageView     = m_pResourceManager->getTexture("RasterPosWorld").descriptorInfo.imageView,
-              .format        = vk::Format::eR32G32B32A32Sfloat,
-              .oldLayout     = vk::ImageLayout::eUndefined,
-              .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
-              .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-              .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-              .srcAccessMask = vk::AccessFlagBits::eNone,
-              .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite },
-            { .imageView     = m_pResourceManager->getTexture("RasterNormalWorld").descriptorInfo.imageView,
-              .format        = vk::Format::eR32G32B32A32Sfloat,
-              .oldLayout     = vk::ImageLayout::eUndefined,
-              .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
-              .srcStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-              .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
-              .srcAccessMask = vk::AccessFlagBits::eNone,
-              .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite }
-        };
-
-        AttachmentInfo depthStencilAttachment = {
-            .imageView     = m_pResourceManager->getTexture("RasterDepth").descriptorInfo.imageView,
-            .format        = findDepthFormat(*m_pContext),
-            .oldLayout     = vk::ImageLayout::eUndefined,
-            .newLayout     = vk::ImageLayout::eDepthStencilAttachmentOptimal,
-            .srcStageMask  = vk::PipelineStageFlagBits::eEarlyFragmentTests,
-            .dstStageMask  = vk::PipelineStageFlagBits::eEarlyFragmentTests,
-            .srcAccessMask = vk::AccessFlagBits::eNone,
-            .dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite
-        };
-
-        // create a vulkan render pass object
-        createVkRenderPass(colorAttachments, depthStencilAttachment);
-
-        createFramebuffer(colorAttachments, depthStencilAttachment);
-
-        // create a graphics pipeline for this render pass
-        setupRasterPipeline("shaders/RasterGBuffer.vert.spv", "shaders/RasterGBuffer.frag.spv");
-    }
-
-    void record(vk::CommandBuffer commandBuffer) override {
-        std::array<vk::ClearValue, 4> clearValues{};
-        clearValues[0].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-        clearValues[1].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-        clearValues[2].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-        clearValues[3].depthStencil = vk::ClearDepthStencilValue{ 1.0f, 0 };
-
-        vk::RenderPassBeginInfo renderPassInfo{ .renderPass  = m_renderPass,
-                                                .framebuffer = m_framebuffer,
-                                                .renderArea{ .offset = { 0, 0 }, .extent = m_extent },
-                                                .clearValueCount = static_cast<uint32_t>(clearValues.size()),
-                                                .pClearValues    = clearValues.data() };
-
-        commandBuffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
-
-        commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_pipeline);
-
-        vk::Viewport viewport{ .x        = 0.0f,
-                               .y        = 0.0f,
-                               .width    = static_cast<float>(m_extent.width),
-                               .height   = static_cast<float>(m_extent.height),
-                               .minDepth = 0.0f,
-                               .maxDepth = 1.0f };
-        commandBuffer.setViewport(0, 1, &viewport);
-
-        vk::Rect2D scissor{ .offset = { 0, 0 }, .extent = m_extent };
-        commandBuffer.setScissor(0, 1, &scissor);
-
-        uint32_t objSize         = m_pScene->getObjects().size();
-        vk::DeviceSize offsets[] = { 0 };
-
-        for (uint32_t i = 0; i < objSize; ++i) {
-            auto object              = m_pScene->getObject(i);
-            vk::Buffer vertexBuffers = object.vertexBuffer->descriptorInfo.buffer;
-            vk::Buffer instanceBuffer =
-                m_pResourceManager->getBuffer("InstanceBuffer" + std::to_string(i)).descriptorInfo.buffer;
-
-            commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSet,
-                                             0, nullptr);
-
-            commandBuffer.bindVertexBuffers(0, 1, &vertexBuffers, offsets);
-            commandBuffer.bindVertexBuffers(1, 1, &instanceBuffer, offsets);
-            commandBuffer.bindIndexBuffer(object.indexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
-
-            commandBuffer.drawIndexed(object.indexBufferSize, object.instanceCount, 0, 0, 0);
-        }
-
-        commandBuffer.endRenderPass();
-    }
-
-private:
-    vk::Format m_colorAttachmentFormat{ vk::Format::eR32G32B32A32Sfloat };
-
-}; // class RasterGBufferPass
 
 class FinalRenderPass : public RasterRenderPass {
 public:
@@ -348,9 +71,10 @@ public:
         m_pResourceManager->createDepthTexture("FinalDepth");
 
         // create a descriptor set
-        std::vector<ResourceBindingInfo> bindings = { { kOffscreenOutputTextureNames[kCurrentItem],
-                                                        vk::DescriptorType::eCombinedImageSampler,
-                                                        vk::ShaderStageFlagBits::eFragment, 1 } };
+        std::vector<ResourceBindingInfo> bindings = {
+            { m_pContext->kOffscreenOutputTextureNames[m_pContext->kCurrentItem],
+              vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1 }
+        };
         createDescriptorSet(bindings);
 
         // create the renderpass
@@ -381,7 +105,8 @@ public:
         createSwapChainFrameBuffers(m_pResourceManager->getTexture("FinalDepth"));
 
         // create a graphics pipeline for this render pass
-        setupRasterPipeline("shaders/Final.vert.spv", "shaders/Final.frag.spv", true);
+        setupRasterPipeline("shaders/CommonShaders/Final.vert.spv",
+                            "shaders/CommonShaders/Final.frag.spv", true);
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
@@ -451,9 +176,10 @@ public:
 
     // required when changing resolution
     void updateDescriptorSets() {
-        std::vector<ResourceBindingInfo> bindings = { { kOffscreenOutputTextureNames[kCurrentItem],
-                                                        vk::DescriptorType::eCombinedImageSampler,
-                                                        vk::ShaderStageFlagBits::eFragment } };
+        std::vector<ResourceBindingInfo> bindings = {
+            { m_pContext->kOffscreenOutputTextureNames[m_pContext->kCurrentItem],
+              vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment }
+        };
 
         std::vector<vk::WriteDescriptorSet> descriptorWrites;
 
@@ -539,7 +265,7 @@ private:
 
     RasterGBufferPass m_rasterGBufferPass;
     RayTracedGBufferPass m_rtGBufferPass;
-    HybridAOPass m_aoPass;
+    AmbientOcclusionPass m_aoPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
@@ -617,12 +343,13 @@ private:
         ImGui::Text("Statistics");
         ImGui::Text(" %.2f FPS (%.2f ms)", imguiIO.Framerate, imguiIO.DeltaTime);
 
-        if (ImGui::BeginCombo("Output", kOffscreenOutputTextureNames[kCurrentItem].c_str(), 0)) {
-            for (int i = 0; i < kOffscreenOutputTextureNames.size(); ++i) {
-                const bool isSelected = (kCurrentItem == i);
-                if (ImGui::Selectable(kOffscreenOutputTextureNames[i].c_str(), isSelected)) {
-                    kCurrentItem = i;
-                    kDirty       = true;
+        if (ImGui::BeginCombo("Output", m_vkContext.kOffscreenOutputTextureNames[m_vkContext.kCurrentItem].c_str(),
+                              0)) {
+            for (int i = 0; i < m_vkContext.kOffscreenOutputTextureNames.size(); ++i) {
+                const bool isSelected = (m_vkContext.kCurrentItem == i);
+                if (ImGui::Selectable(m_vkContext.kOffscreenOutputTextureNames[i].c_str(), isSelected)) {
+                    m_vkContext.kCurrentItem = i;
+                    m_vkContext.kDirty       = true;
                 }
 
                 if (isSelected)
@@ -960,7 +687,8 @@ private:
         m_rasterGBufferPass.record(commandBuffer);
         m_aoPass.record(commandBuffer);
 
-        auto outputTexture = m_pResourceManager->getTexture(kOffscreenOutputTextureNames[kCurrentItem]);
+        auto outputTexture =
+            m_pResourceManager->getTexture(m_vkContext.kOffscreenOutputTextureNames[m_vkContext.kCurrentItem]);
 
         transitionImageLayout(commandBuffer, outputTexture, outputTexture.descriptorInfo.imageLayout,
                               vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllCommands,
@@ -1001,9 +729,9 @@ private:
         } while (result == vk::Result::eTimeout);
 
         // change the descriptor sets w.r.t. updated gui (e.g., output buffer)
-        if (kDirty) {
+        if (m_vkContext.kDirty) {
             m_finalRenderPass.updateDescriptorSets();
-            kDirty = false;
+            m_vkContext.kDirty = false;
         }
 
         uint32_t imageIndex;

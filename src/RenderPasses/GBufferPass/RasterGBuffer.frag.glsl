@@ -3,7 +3,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
-#include "ShaderCommon.h"
+#include "CommonShaders/HitData.h"
 
 // input from descriptor set
 layout(binding = 1) uniform sampler2D[] texSamplers;

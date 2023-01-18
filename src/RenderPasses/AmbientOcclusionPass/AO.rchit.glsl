@@ -6,8 +6,8 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_scalar_block_layout : enable
 
-#include "../Common.hpp"
-#include "HybridAO.h"
+#include "Common.hpp"
+#include "AoCommon.h"
 
 layout(location = 0) rayPayloadInEXT SurfaceHit payload;
 

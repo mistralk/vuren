@@ -1,5 +1,5 @@
-#ifndef HYBRID_AO_H
-#define HYBRID_AO_H
+#ifndef AO_COMMON_H
+#define AO_COMMON_H
 
 #ifdef __cplusplus
 #include <glm/glm.hpp>
@@ -25,4 +25,4 @@ struct AoData {
 } // namespace vuren
 #endif
 
-#endif // HYBRID_AO_H
+#endif // AO_COMMON_H

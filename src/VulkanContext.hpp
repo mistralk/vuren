@@ -80,6 +80,11 @@ public:
     vk::Queue m_graphicsQueue;
     vk::Queue m_presentQueue;
 
+    // temporary: for output texture control in GUI
+    std::vector<std::string> kOffscreenOutputTextureNames;
+    int kCurrentItem = 0;
+    bool kDirty      = false;
+
 private:
     std::string m_appName;
     GLFWwindow *m_pWindow = nullptr;

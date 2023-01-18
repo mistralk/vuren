@@ -6,8 +6,8 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_scalar_block_layout : enable
 
-#include "../Common.hpp"
-#include "HitCommon.h"
+#include "Common.hpp"
+#include "CommonShaders/HitDataRt.h"
 
 layout(set = 0, binding = 1) uniform sampler2D[] texSamplers;
 layout(set = 0, binding = 2) buffer _SceneObjectDevice {

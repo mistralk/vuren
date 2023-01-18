@@ -1,7 +1,7 @@
-#ifndef INTERSECTION_COMMON_H
-#define INTERSECTION_COMMON_H
+#ifndef RT_HIT_COMMON_H
+#define RT_HIT_COMMON_H
 
-#include "ShaderCommon.h"
+#include "HitData.h"
 
 struct IntersectionAttribute {
     vec2 barycentrics;
@@ -47,4 +47,4 @@ SurfaceHit getHitData(SceneObjectDevice objInfo, IntersectionAttribute attribs) 
     return hit;
 }
 
-#endif // INTERSECTION_COMMON_H
+#endif // RT_HIT_COMMON_H
