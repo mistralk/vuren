@@ -48,6 +48,8 @@ public:
     ResourceManager(VulkanContext *pContext);
     ~ResourceManager();
 
+    void connectInputOutputTexture(const std::string& outputTextureKey, const std::string& inputTextureKey);
+
     void createTextureRGBA32Sfloat(const std::string &name);
     void createDepthTexture(const std::string &name);
     Texture createModelTexture(const std::string &name, const std::string &filename);

@@ -358,6 +358,8 @@ private:
             ImGui::EndCombo();
         }
 
+        m_aoPass.updateGui();
+
         ImGui::End();
     }
 
@@ -675,8 +677,7 @@ private:
 
         updateCameraBuffer("CameraBuffer");
 
-        static unsigned int frameCount = 0;
-        m_aoPass.updateAoDataUniformBuffer(0.0 + frameCount / 10000.0, frameCount++);
+        m_aoPass.updateAoDataUniformBuffer();
 
         // if (kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedPosWorld" ||
         //     kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedNormalWorld")

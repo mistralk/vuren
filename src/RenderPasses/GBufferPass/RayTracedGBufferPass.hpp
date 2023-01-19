@@ -17,6 +17,9 @@ public:
         RayTracingRenderPass::init(pContext, commandPool, pResourceManager, pScene);
     }
 
+    void updateGui() {
+    }
+
     void define() override {
         // for ray tracing, writing to output image will be manually called by shader
         m_pResourceManager->createTextureRGBA32Sfloat("RayTracedPosWorld");

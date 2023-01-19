@@ -15,5 +15,5 @@ target_sources(vuren PRIVATE
     main.cpp
 )
 
-file(GLOB_RECURSE RENDER_PASS_SOURCES "RenderPasses/*.cpp" "RenderPasses/*.hpp")
+file(GLOB_RECURSE RENDER_PASS_SOURCES "RenderPasses/*.cpp" "RenderPasses/*.hpp" "RenderPasses/*.h" "CommonShaders/*.h")
 target_sources(vuren PRIVATE ${RENDER_PASS_SOURCES})

@@ -13,6 +13,7 @@ Currently it has only been tested on Ubuntu 22.04 and NVIDIA RTX GPU.
 - glslangValidator
 - GLFW3
 - GLM
+- CMake 3.20+
 
 ## Features
 

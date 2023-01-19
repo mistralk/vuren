@@ -11,7 +11,16 @@ ResourceManager::ResourceManager(VulkanContext *pContext) : m_pContext(pContext)
 
 ResourceManager::~ResourceManager() {}
 
+// make inputTextureKey point to outputTexture
+void ResourceManager::connectInputOutputTexture(const std::string& outputTextureKey, const std::string& inputTextureKey) {
+    m_globalTextureDict[inputTextureKey] = m_globalTextureDict[outputTextureKey];
+}
+
 void ResourceManager::createTextureRGBA32Sfloat(const std::string &name) {
+    if (m_globalTextureDict.find(name) != m_globalTextureDict.end()) {
+        return;
+    }
+
     Texture texture = createTexture(
         m_extent.width, m_extent.height, vk::Format::eR32G32B32A32Sfloat, vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,

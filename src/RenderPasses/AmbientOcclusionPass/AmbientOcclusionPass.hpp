@@ -16,6 +16,13 @@ public:
         RayTracingRenderPass::init(pContext, commandPool, pResourceManager, pScene);
     }
 
+    void updateGui() {
+        if (!ImGui::CollapsingHeader("Ambiend Occlusion Pass"))
+            return;
+
+        ImGui::DragFloat("Radius (ray.maxT)", &m_aoData.radius, 0.01f, 0.0f, 100.0f, "%.02f");
+    }
+
     void define() override {
         m_pResourceManager->createTextureRGBA32Sfloat("AOOutput");
         auto texture = m_pResourceManager->getTexture("AOOutput");
@@ -63,9 +70,7 @@ public:
                                    m_extent.height, 1);
     }
 
-    void updateAoDataUniformBuffer(float radius, unsigned int frameCount) {
-        m_aoData.radius     = radius;
-        m_aoData.frameCount = frameCount;
+    void updateAoDataUniformBuffer() {
         memcpy(m_pResourceManager->getMappedBuffer("AoData"), &m_aoData, sizeof(AoData));
     }
 

@@ -17,6 +17,9 @@ public:
         RasterRenderPass::init(pContext, commandPool, pResourceManager, pScene);
     }
 
+    void updateGui() {
+    }
+
     void define() override {
         // create textures for the attachments
         m_pResourceManager->createTextureRGBA32Sfloat("RasterColor");

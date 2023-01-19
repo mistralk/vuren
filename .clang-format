@@ -49,3 +49,4 @@ SpaceBeforeSquareBrackets: false
 SpaceBeforeRangeBasedForLoopColon: false
 SpacesInSquareBrackets: false
 SpacesInConditionalStatement: false
+SortIncludes: Never

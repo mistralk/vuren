@@ -4,6 +4,7 @@
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
+#include <imgui/imgui.h>
 
 #include "Common.hpp"
 #include "ResourceManager.hpp"
@@ -30,6 +31,7 @@ public:
     RenderPass();
     virtual ~RenderPass();
 
+    virtual void updateGui() {};
     virtual void init(VulkanContext *pContext, vk::CommandPool commandPool,
                       std::shared_ptr<ResourceManager> pResourceManager, std::shared_ptr<Scene> pScene);
     virtual void define()                                = 0;
