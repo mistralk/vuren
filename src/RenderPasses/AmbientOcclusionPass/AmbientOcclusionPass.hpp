@@ -14,6 +14,9 @@ public:
     void init(VulkanContext *pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager,
               std::shared_ptr<Scene> pScene) override {
         RayTracingRenderPass::init(pContext, commandPool, pResourceManager, pScene);
+
+        m_aoData.frameCount = 0;
+        m_aoData.radius = 1.0;
     }
 
     void updateGui() {
@@ -51,16 +54,6 @@ public:
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
-        auto texture = m_pResourceManager->getTexture("RasterPosWorld");
-        transitionImageLayout(commandBuffer, texture, vk::ImageLayout::eColorAttachmentOptimal,
-                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
-        texture = m_pResourceManager->getTexture("RasterNormalWorld");
-        transitionImageLayout(commandBuffer, texture, vk::ImageLayout::eColorAttachmentOptimal,
-                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
-                              vk::PipelineStageFlagBits::eRayTracingShaderKHR);
-
         commandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, m_pipeline);
 
         commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, m_pipelineLayout, 0, 1,

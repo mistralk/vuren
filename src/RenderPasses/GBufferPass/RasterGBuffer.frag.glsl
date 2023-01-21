@@ -16,7 +16,7 @@ layout(location = 1) out vec4 outPosWorld;
 layout(location = 2) out vec4 outNormalWorld;
 
 void main() {
-    uint texId = 0;
+    uint texId = 1;
     outColor = texture(texSamplers[nonuniformEXT(texId)], inHitData.texCoord);
     outPosWorld = vec4(inHitData.worldPos, 1.0);
     outNormalWorld = vec4(inHitData.worldNormal, 1.0);

@@ -45,7 +45,7 @@ public:
 
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView     = m_pResourceManager->getTexture("RasterColor").descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("RasterColor")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -53,7 +53,7 @@ public:
               .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
               .srcAccessMask = vk::AccessFlagBits::eNone,
               .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite },
-            { .imageView     = m_pResourceManager->getTexture("RasterPosWorld").descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("RasterPosWorld")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -61,7 +61,7 @@ public:
               .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
               .srcAccessMask = vk::AccessFlagBits::eNone,
               .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite },
-            { .imageView     = m_pResourceManager->getTexture("RasterNormalWorld").descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("RasterNormalWorld")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -72,7 +72,7 @@ public:
         };
 
         AttachmentInfo depthStencilAttachment = {
-            .imageView     = m_pResourceManager->getTexture("RasterDepth").descriptorInfo.imageView,
+            .imageView     = m_pResourceManager->getTexture("RasterDepth")->descriptorInfo.imageView,
             .format        = findDepthFormat(*m_pContext),
             .oldLayout     = vk::ImageLayout::eUndefined,
             .newLayout     = vk::ImageLayout::eDepthStencilAttachmentOptimal,
@@ -125,16 +125,16 @@ public:
 
         for (uint32_t i = 0; i < objSize; ++i) {
             auto object              = m_pScene->getObject(i);
-            vk::Buffer vertexBuffers = object.vertexBuffer->descriptorInfo.buffer;
+            vk::Buffer vertexBuffers = object.pVertexBuffer->descriptorInfo.buffer;
             vk::Buffer instanceBuffer =
-                m_pResourceManager->getBuffer("InstanceBuffer" + std::to_string(i)).descriptorInfo.buffer;
+                m_pResourceManager->getBuffer("InstanceBuffer" + std::to_string(i))->descriptorInfo.buffer;
 
             commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_pipelineLayout, 0, 1, &m_descriptorSet,
                                              0, nullptr);
 
             commandBuffer.bindVertexBuffers(0, 1, &vertexBuffers, offsets);
             commandBuffer.bindVertexBuffers(1, 1, &instanceBuffer, offsets);
-            commandBuffer.bindIndexBuffer(object.indexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
+            commandBuffer.bindIndexBuffer(object.pIndexBuffer->descriptorInfo.buffer, 0, vk::IndexType::eUint32);
 
             commandBuffer.drawIndexed(object.indexBufferSize, object.instanceCount, 0, 0, 0);
         }

@@ -21,41 +21,38 @@ void ResourceManager::createTextureRGBA32Sfloat(const std::string &name) {
         return;
     }
 
-    Texture texture = createTexture(
+    std::shared_ptr<Texture> pTexture = createTexture(
         m_extent.width, m_extent.height, vk::Format::eR32G32B32A32Sfloat, vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
         vk::MemoryPropertyFlagBits::eDeviceLocal);
-    createImageView(texture, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
-    createSampler(texture);
+    createImageView(pTexture, vk::Format::eR32G32B32A32Sfloat, vk::ImageAspectFlagBits::eColor);
+    createSampler(pTexture);
     // transitionImageLayout(*m_pContext, m_commandPool, texture, vk::Format::eR32G32B32A32Sfloat,
     // vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 
-    if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
-        throw std::runtime_error("same key already exists in texture dictionary!");
+    pTexture->name = name;
 
-    texture.name = name;
-
-    m_globalTextureDict.insert({ name, texture });
+    m_globalTextureDict.insert({ name, pTexture });
 }
 
 void ResourceManager::createDepthTexture(const std::string &name) {
-    vk::Format depthFormat = findDepthFormat(*m_pContext);
-    Texture depthTexture =
-        createTexture(m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal,
-                      vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
-    createImageView(depthTexture, depthFormat, vk::ImageAspectFlagBits::eDepth);
-    // transitionImageLayout(*m_pContext, m_commandPool, texture, depthFormat,
-    // vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
-
     if (m_globalTextureDict.find(name) != m_globalTextureDict.end())
         throw std::runtime_error("same depth key already exists in texture dictionary!");
 
-    depthTexture.name = name;
+    vk::Format depthFormat = findDepthFormat(*m_pContext);
+    std::shared_ptr<Texture> pDepthTexture =
+        createTexture(m_extent.width, m_extent.height, depthFormat, vk::ImageTiling::eOptimal,
+                      vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    createImageView(pDepthTexture, depthFormat, vk::ImageAspectFlagBits::eDepth);
+    // transitionImageLayout(*m_pContext, m_commandPool, texture, depthFormat,
+    // vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-    m_globalTextureDict.insert({ name, depthTexture });
+    pDepthTexture->name = name;
+
+    m_globalTextureDict.insert({ name, pDepthTexture });
 }
 
-Texture ResourceManager::createModelTexture(const std::string &name, const std::string &filename) {
+std::shared_ptr<Texture> ResourceManager::createModelTexture(const std::string &name, const std::string &filename) {
     int texWidth, texHeight, texChannels;
     stbi_uc *pixels          = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     vk::DeviceSize imageSize = texWidth * texHeight * 4;
@@ -75,38 +72,38 @@ Texture ResourceManager::createModelTexture(const std::string &name, const std::
 
     stbi_image_free(pixels);
 
-    Texture modelTexture = createTexture(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
+    std::shared_ptr<Texture> pModelTexture = createTexture(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
                                          vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
                                          vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Transition the texture image to ImageLayout::eTransferDstOptimal
     // The image was create with the ImageLayout::eUndefined layout
     // Because we don't care about its contents before performing the copy operation
-    transitionImageLayout(*m_pContext, m_commandPool, modelTexture, vk::Format::eR8G8B8A8Srgb,
+    transitionImageLayout(*m_pContext, m_commandPool, pModelTexture, vk::Format::eR8G8B8A8Srgb,
                           vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
     // Execute the staging buffer to image copy operation
-    copyBufferToImage(*m_pContext, m_commandPool, stagingBuffer.descriptorInfo.buffer, modelTexture.image,
+    copyBufferToImage(*m_pContext, m_commandPool, stagingBuffer.descriptorInfo.buffer, pModelTexture->image,
                       static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 
     // To be able to start sampling from the texture image in the shader,
     // need one last transition to prepare it for shader access
-    transitionImageLayout(*m_pContext, m_commandPool, modelTexture, vk::Format::eR8G8B8A8Srgb,
+    transitionImageLayout(*m_pContext, m_commandPool, pModelTexture, vk::Format::eR8G8B8A8Srgb,
                           vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 
     destroyBuffer(stagingBuffer);
 
-    createImageView(modelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
-    createModelTextureSampler(modelTexture);
+    createImageView(pModelTexture, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+    createModelTextureSampler(pModelTexture);
 
-    modelTexture.name = name;
+    pModelTexture->name = name;
 
-    m_globalTextureDict.insert({ name, modelTexture });
+    m_globalTextureDict.insert({ name, pModelTexture });
 
-    return modelTexture;
+    return pModelTexture;
 }
 
-void ResourceManager::createModelTextureSampler(Texture &texture) {
+void ResourceManager::createModelTextureSampler(std::shared_ptr<Texture> pTexture) {
     vk::PhysicalDeviceProperties properties{};
     m_pContext->m_physicalDevice.getProperties(&properties);
 
@@ -126,24 +123,24 @@ void ResourceManager::createModelTextureSampler(Texture &texture) {
                                        .borderColor             = vk::BorderColor::eIntOpaqueBlack,
                                        .unnormalizedCoordinates = VK_FALSE };
 
-    if (m_pContext->m_device.createSampler(&samplerInfo, nullptr, &texture.descriptorInfo.sampler) !=
+    if (m_pContext->m_device.createSampler(&samplerInfo, nullptr, &pTexture->descriptorInfo.sampler) !=
         vk::Result::eSuccess) {
         throw std::runtime_error("failed to create texture sampler!");
     }
 }
 
-void ResourceManager::destroyTextures() {
-    for (auto texture: m_globalTextureDict) {
-        destroyTexture(texture.second);
+void ResourceManager::destroyManagedTextures() {
+    for (auto texture : m_globalTextureDict) {
+        destroyTexture(*texture.second);
     }
 }
 
-void ResourceManager::destroyBuffers() {
-    for (auto buffer: m_globalBufferDict) {
+void ResourceManager::destroyManagedBuffers() {
+    for (auto buffer : m_globalBufferDict) {
         if (m_uniformBufferMappedDict.find(buffer.first) != m_uniformBufferMappedDict.end()) {
             m_uniformBufferMappedDict.erase(buffer.first);
         }
-        destroyBuffer(buffer.second);
+        destroyBuffer(*buffer.second);
     }
 }
 
@@ -196,13 +193,13 @@ void ResourceManager::loadObjModel(const std::string &name, const std::string &f
 
     SceneObject object = { .vertexBufferSize = static_cast<uint32_t>(vertices.size()),
                            .indexBufferSize  = static_cast<uint32_t>(indices.size()),
-                           .vertexBuffer     = &m_globalBufferDict[vertexBufferKey],
-                           .indexBuffer      = &m_globalBufferDict[indexBufferKey] };
+                           .pVertexBuffer     = m_globalBufferDict[vertexBufferKey],
+                           .pIndexBuffer      = m_globalBufferDict[indexBufferKey] };
 
     // using this address information, shaders can access these buffers by indexing.
     SceneObjectDevice objectDeviceInfo = {
-        .vertexAddress = m_pContext->getBufferDeviceAddress(m_globalBufferDict[vertexBufferKey].descriptorInfo.buffer),
-        .indexAddress  = m_pContext->getBufferDeviceAddress(m_globalBufferDict[indexBufferKey].descriptorInfo.buffer)
+        .vertexAddress = m_pContext->getBufferDeviceAddress(m_globalBufferDict[vertexBufferKey]->descriptorInfo.buffer),
+        .indexAddress  = m_pContext->getBufferDeviceAddress(m_globalBufferDict[indexBufferKey]->descriptorInfo.buffer)
     };
 
     pScene->addObject(object);
@@ -263,21 +260,21 @@ void ResourceManager::destroyAs(AccelerationStructure &as) {
     m_pContext->m_device.destroyAccelerationStructureKHR(as.as);
 }
 
-void ResourceManager::destroyTexture(Texture &texture) {
+void ResourceManager::destroyTexture(Texture texture) {
     m_pContext->m_device.destroySampler(texture.descriptorInfo.sampler, nullptr);
     m_pContext->m_device.destroyImage(texture.image, nullptr);
     m_pContext->m_device.destroyImageView(texture.descriptorInfo.imageView, nullptr);
     m_pContext->m_device.freeMemory(texture.memory, nullptr);
 }
 
-void ResourceManager::destroyBuffer(Buffer &buffer) {
+void ResourceManager::destroyBuffer(Buffer buffer) {
     m_pContext->m_device.destroyBuffer(buffer.descriptorInfo.buffer, nullptr);
     m_pContext->m_device.freeMemory(buffer.memory, nullptr);
 }
 
-Texture ResourceManager::createTexture(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling,
+std::shared_ptr<Texture> ResourceManager::createTexture(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling,
                                        vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) {
-    Texture texture;
+    auto texture = std::make_shared<Texture>();
 
     vk::ImageCreateInfo imageInfo{ .imageType             = vk::ImageType::e2D,
                                    .format                = format,
@@ -292,28 +289,28 @@ Texture ResourceManager::createTexture(uint32_t width, uint32_t height, vk::Form
                                    .pQueueFamilyIndices   = {},
                                    .initialLayout         = vk::ImageLayout::eUndefined };
 
-    if (m_pContext->m_device.createImage(&imageInfo, nullptr, &texture.image) != vk::Result::eSuccess) {
+    if (m_pContext->m_device.createImage(&imageInfo, nullptr, &texture->image) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to create image!");
     }
 
     vk::MemoryRequirements memRequirements;
-    m_pContext->m_device.getImageMemoryRequirements(texture.image, &memRequirements);
+    m_pContext->m_device.getImageMemoryRequirements(texture->image, &memRequirements);
 
     vk::MemoryAllocateInfo allocInfo{ .allocationSize = memRequirements.size,
                                       .memoryTypeIndex =
                                           findMemoryType(*m_pContext, memRequirements.memoryTypeBits, properties) };
 
-    if (m_pContext->m_device.allocateMemory(&allocInfo, nullptr, &texture.memory) != vk::Result::eSuccess) {
+    if (m_pContext->m_device.allocateMemory(&allocInfo, nullptr, &texture->memory) != vk::Result::eSuccess) {
         throw std::runtime_error("failed to allocate image memory!");
     }
 
-    m_pContext->m_device.bindImageMemory(texture.image, texture.memory, 0);
+    m_pContext->m_device.bindImageMemory(texture->image, texture->memory, 0);
 
     return texture;
 }
 
-void ResourceManager::createImageView(Texture &texture, vk::Format format, vk::ImageAspectFlags aspectFlags) {
-    vk::ImageViewCreateInfo viewInfo{ .image            = texture.image,
+void ResourceManager::createImageView(std::shared_ptr<Texture> pTexture, vk::Format format, vk::ImageAspectFlags aspectFlags) {
+    vk::ImageViewCreateInfo viewInfo{ .image            = pTexture->image,
                                       .viewType         = vk::ImageViewType::e2D,
                                       .format           = format,
                                       .subresourceRange = { .aspectMask     = aspectFlags,
@@ -322,13 +319,13 @@ void ResourceManager::createImageView(Texture &texture, vk::Format format, vk::I
                                                             .baseArrayLayer = 0,
                                                             .layerCount     = 1 } };
 
-    if (m_pContext->m_device.createImageView(&viewInfo, nullptr, &texture.descriptorInfo.imageView) !=
+    if (m_pContext->m_device.createImageView(&viewInfo, nullptr, &pTexture->descriptorInfo.imageView) !=
         vk::Result::eSuccess) {
         throw std::runtime_error("failed to create image view!");
     }
 }
 
-void ResourceManager::createSampler(Texture &texture) {
+void ResourceManager::createSampler(std::shared_ptr<Texture> pTexture) {
     vk::SamplerCreateInfo samplerInfo{
         // .magFilter = vk::Filter::eLinear,
         // .minFilter = vk::Filter::eLinear,
@@ -346,7 +343,7 @@ void ResourceManager::createSampler(Texture &texture) {
         // .unnormalizedCoordinates = VK_FALSE
     };
 
-    if (m_pContext->m_device.createSampler(&samplerInfo, nullptr, &texture.descriptorInfo.sampler) !=
+    if (m_pContext->m_device.createSampler(&samplerInfo, nullptr, &pTexture->descriptorInfo.sampler) !=
         vk::Result::eSuccess) {
         throw std::runtime_error("failed to create sampler!");
     }
@@ -454,7 +451,7 @@ void copyBufferToImage(const VulkanContext &context, vk::CommandPool &commandPoo
     endSingleTimeCommands(context, commandPool, commandBuffer);
 }
 
-void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture &texture, vk::ImageLayout oldLayout,
+void transitionImageLayout(vk::CommandBuffer commandBuffer, std::shared_ptr<Texture> pTexture, vk::ImageLayout oldLayout,
                            vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage,
                            vk::PipelineStageFlags dstStage) {
     vk::ImageMemoryBarrier barrier;
@@ -463,7 +460,7 @@ void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture &texture, vk
     barrier.newLayout           = newLayout;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image               = texture.image;
+    barrier.image               = pTexture->image;
 
     barrier.subresourceRange.baseMipLevel   = 0;
     barrier.subresourceRange.levelCount     = 1;
@@ -493,6 +490,8 @@ void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture &texture, vk
         case vk::ImageLayout::eTransferDstOptimal:
             barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
             break;
+        default:
+            throw std::invalid_argument("unsupported layout transition!");
     }
 
     switch (newLayout) {
@@ -514,22 +513,24 @@ void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture &texture, vk
             barrier.dstAccessMask =
                 vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
             break;
+        default:
+            throw std::invalid_argument("unsupported layout transition!");
     }
 
-    texture.descriptorInfo.imageLayout = newLayout;
+    pTexture->descriptorInfo.imageLayout = newLayout;
 
     commandBuffer.pipelineBarrier(srcStage, dstStage, {}, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
-void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, Texture &texture,
+void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, std::shared_ptr<Texture> pTexture,
                            vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage,
                            vk::PipelineStageFlags dstStage) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
-    transitionImageLayout(commandBuffer, texture, oldLayout, newLayout, srcStage, dstStage);
+    transitionImageLayout(commandBuffer, pTexture, oldLayout, newLayout, srcStage, dstStage);
     endSingleTimeCommands(context, commandPool, commandBuffer);
 }
 
-void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, Texture &texture,
+void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, std::shared_ptr<Texture> pTexture,
                            vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
 
@@ -539,7 +540,7 @@ void transitionImageLayout(const VulkanContext &context, vk::CommandPool &comman
                                     .newLayout           = newLayout,
                                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                                    .image               = texture.image,
+                                    .image               = pTexture->image,
                                     .subresourceRange    = {
                                            .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1 } };
 
@@ -627,7 +628,7 @@ void transitionImageLayout(const VulkanContext &context, vk::CommandPool &comman
         throw std::invalid_argument("unsupported layout transition!");
     }
 
-    texture.descriptorInfo.imageLayout = newLayout;
+    pTexture->descriptorInfo.imageLayout = newLayout;
 
     commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, 0, nullptr, 0, nullptr, 1, &barrier);
 

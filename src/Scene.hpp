@@ -21,7 +21,7 @@ public:
 
     const std::vector<ObjectInstance> &getInstances() { return m_instances; }
 
-    const std::vector<Texture> &getTextures() { return m_textures; }
+    const std::vector<std::shared_ptr<Texture>> &getTextures() { return m_textures; }
 
     void addObject(SceneObject object) { m_objects.emplace_back(object); }
 
@@ -31,7 +31,7 @@ public:
         m_instances.insert(m_instances.end(), instances.begin(), instances.end());
     }
 
-    void addTexture(Texture texture) { m_textures.emplace_back(texture); }
+    void addTexture(std::shared_ptr<Texture> pTexture) { m_textures.emplace_back(pTexture); }
 
     void setInstanceCount(uint32_t objectId, uint32_t count) { m_objects[objectId].instanceCount = count; }
 
@@ -40,7 +40,7 @@ private:
     std::vector<SceneObjectDevice> m_objectsDevice;
 
     std::vector<ObjectInstance> m_instances;
-    std::vector<Texture> m_textures;
+    std::vector<std::shared_ptr<Texture>> m_textures;
 };
 
 } // namespace vuren

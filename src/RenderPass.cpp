@@ -117,8 +117,8 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bin
         // specialized bindings for scene resourses
         if (bindingInfos[i].name == "SceneTextures") {
             assert(bindings[i].descriptorType == vk::DescriptorType::eCombinedImageSampler);
-            for (auto &texture: m_pScene->getTextures()) {
-                imageInfo             = m_pResourceManager->getTexture(texture.name).descriptorInfo;
+            for (auto pTexture: m_pScene->getTextures()) {
+                imageInfo             = m_pResourceManager->getTexture(pTexture->name)->descriptorInfo;
                 imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
                 imageInfos.push_back(imageInfo);
             }
@@ -126,7 +126,7 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bin
         } else if (bindingInfos[i].name == "SceneObjects") {
             assert(bindings[i].descriptorType == vk::DescriptorType::eStorageBuffer);
             for (auto &buffer: m_pScene->getObjects()) {
-                bufferInfo = m_pResourceManager->getBuffer("SceneObjectDeviceInfo").descriptorInfo;
+                bufferInfo = m_pResourceManager->getBuffer("SceneObjectDeviceInfo")->descriptorInfo;
                 bufferInfos.push_back(bufferInfo);
             }
             write.pBufferInfo = &bufferInfos.back() - m_pScene->getObjects().size() + 1;
@@ -136,27 +136,27 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bin
         else {
             switch (bindings[i].descriptorType) {
                 case vk::DescriptorType::eCombinedImageSampler:
-                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name)->descriptorInfo;
                     imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
                     imageInfos.push_back(imageInfo);
                     write.pImageInfo = &imageInfos.back();
                     break;
 
                 case vk::DescriptorType::eStorageImage:
-                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name).descriptorInfo;
+                    imageInfo             = m_pResourceManager->getTexture(bindingInfos[i].name)->descriptorInfo;
                     imageInfo.imageLayout = vk::ImageLayout::eGeneral;
                     imageInfos.push_back(imageInfo);
                     write.pImageInfo = &imageInfos.back();
                     break;
 
                 case vk::DescriptorType::eUniformBuffer:
-                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
+                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name)->descriptorInfo;
                     bufferInfos.push_back(bufferInfo);
                     write.pBufferInfo = &bufferInfos.back();
                     break;
 
                 case vk::DescriptorType::eStorageBuffer:
-                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name).descriptorInfo;
+                    bufferInfo = m_pResourceManager->getBuffer(bindingInfos[i].name)->descriptorInfo;
                     bufferInfos.push_back(bufferInfo);
                     write.pBufferInfo = &bufferInfos.back();
                     break;
@@ -535,8 +535,8 @@ RayTracingRenderPass::BlasInput RayTracingRenderPass::objectToVkGeometryKHR(cons
     // only the position attribute is needed for the AS build.
     // if position is not the first member of Vertex,
     // we have to manually adjust vertexAddress using offsetof.
-    vk::DeviceAddress vertexAddress = m_pContext->getBufferDeviceAddress(object.vertexBuffer->descriptorInfo.buffer);
-    vk::DeviceAddress indexAddress  = m_pContext->getBufferDeviceAddress(object.indexBuffer->descriptorInfo.buffer);
+    vk::DeviceAddress vertexAddress = m_pContext->getBufferDeviceAddress(object.pVertexBuffer->descriptorInfo.buffer);
+    vk::DeviceAddress indexAddress  = m_pContext->getBufferDeviceAddress(object.pIndexBuffer->descriptorInfo.buffer);
 
     uint32_t maxPrimitiveCount = object.indexBufferSize / 3;
 

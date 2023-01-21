@@ -45,8 +45,8 @@ struct AccelerationStructure {
 struct SceneObject {
     uint vertexBufferSize{ 0 };
     uint indexBufferSize{ 0 };
-    Buffer *vertexBuffer;
-    Buffer *indexBuffer;
+    std::shared_ptr<Buffer> pVertexBuffer;
+    std::shared_ptr<Buffer> pIndexBuffer;
     uint instanceCount{ 0 };
 };
 

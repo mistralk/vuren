@@ -90,7 +90,7 @@ public:
                                                          vk::AccessFlagBits::eColorAttachmentRead };
         colorAttachments.push_back(colorAttachment);
         AttachmentInfo depthStencilAttachment = {
-            .imageView     = m_pResourceManager->getTexture("FinalDepth").descriptorInfo.imageView,
+            .imageView     = m_pResourceManager->getTexture("FinalDepth")->descriptorInfo.imageView,
             .format        = findDepthFormat(*m_pContext),
             .oldLayout     = vk::ImageLayout::eUndefined,
             .newLayout     = vk::ImageLayout::eDepthStencilAttachmentOptimal,
@@ -102,11 +102,10 @@ public:
         createVkRenderPass(colorAttachments, depthStencilAttachment);
 
         // create swap chain framebuffers
-        createSwapChainFrameBuffers(m_pResourceManager->getTexture("FinalDepth"));
+        createSwapChainFrameBuffers(*m_pResourceManager->getTexture("FinalDepth"));
 
         // create a graphics pipeline for this render pass
-        setupRasterPipeline("shaders/CommonShaders/Final.vert.spv",
-                            "shaders/CommonShaders/Final.frag.spv", true);
+        setupRasterPipeline("shaders/CommonShaders/Final.vert.spv", "shaders/CommonShaders/Final.frag.spv", true);
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
@@ -192,16 +191,16 @@ public:
 
             switch (bindings[i].descriptorType) {
                 case vk::DescriptorType::eCombinedImageSampler:
-                    imageInfo.sampler     = m_pResourceManager->getTexture(bindings[i].name).descriptorInfo.sampler;
-                    imageInfo.imageView   = m_pResourceManager->getTexture(bindings[i].name).descriptorInfo.imageView;
+                    imageInfo.sampler     = m_pResourceManager->getTexture(bindings[i].name)->descriptorInfo.sampler;
+                    imageInfo.imageView   = m_pResourceManager->getTexture(bindings[i].name)->descriptorInfo.imageView;
                     imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
                     pImageInfo            = &imageInfo;
                     break;
 
                 case vk::DescriptorType::eUniformBuffer:
-                    bufferInfo.buffer = m_pResourceManager->getBuffer(bindings[i].name).descriptorInfo.buffer;
+                    bufferInfo.buffer = m_pResourceManager->getBuffer(bindings[i].name)->descriptorInfo.buffer;
                     bufferInfo.offset = 0;
-                    bufferInfo.range  = m_pResourceManager->getBuffer(bindings[i].name).descriptorInfo.range;
+                    bufferInfo.range  = m_pResourceManager->getBuffer(bindings[i].name)->descriptorInfo.range;
                     pBufferInfo       = &bufferInfo;
                     break;
 
@@ -404,7 +403,7 @@ private:
         m_pResourceManager->createUniformBuffer<Camera>("CameraBuffer");
         auto texture = m_pResourceManager->createModelTexture("VikingRoom", "assets/textures/viking_room.png");
         m_pScene->addTexture(texture);
-        auto texture1 = m_pResourceManager->createModelTexture("Statue", "assets/textures/texture.jpg");
+        auto texture1 = m_pResourceManager->createModelTexture("Bunny", "assets/textures/texture.jpg");
         m_pScene->addTexture(texture1);
 
         // m_pResourceManager->loadObjModel("Room", "assets/models/viking_room.obj", m_pScene);
@@ -456,8 +455,8 @@ private:
         m_aoPass.cleanup();
         m_finalRenderPass.cleanup();
 
-        m_pResourceManager->destroyTextures();
-        m_pResourceManager->destroyBuffers();
+        m_pResourceManager->destroyManagedTextures();
+        m_pResourceManager->destroyManagedBuffers();
 
         cleanupSwapChain();
 
@@ -675,8 +674,8 @@ private:
             throw std::runtime_error("failed to begin recording command buffer!");
         }
 
-        updateCameraBuffer("CameraBuffer");
-
+        // these are not device command. I think they have to be moved out from this command buffer recording..
+        updateCameraBuffer("CameraBuffer"); 
         m_aoPass.updateAoDataUniformBuffer();
 
         // if (kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedPosWorld" ||
@@ -686,21 +685,48 @@ private:
         //     m_rasterGBufferPass.record(commandBuffer);
 
         m_rasterGBufferPass.record(commandBuffer);
+
+        // 결국 descriptor info는 cpu 메모리에 정의된 구조체에 불과
+        // 레코딩 단계에서 로드하더라도, 런타임에 동적으로 바뀐 디스크립터 인포가 해당 커맨드 실행 시점에서 적용되었다는 보장이 없음 (그렇게 하려면 CPU 펜스가 필요함)
+        // 아예 명시적인 분기로 만들던가 아니면 렌더그래프를 "컴파일" 하던가
+
+        auto colorTexture = m_pResourceManager->getTexture("RasterColor");
+        transitionImageLayout(commandBuffer, colorTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eAllGraphics);
+
+        auto posTexture = m_pResourceManager->getTexture("RasterPosWorld");
+        transitionImageLayout(commandBuffer, posTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eAllGraphics);
+
+        auto normalTexture = m_pResourceManager->getTexture("RasterNormalWorld");
+        transitionImageLayout(commandBuffer, normalTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eAllGraphics);
+
+        // AO pass output texture
         m_aoPass.record(commandBuffer);
-
-        auto outputTexture =
-            m_pResourceManager->getTexture(m_vkContext.kOffscreenOutputTextureNames[m_vkContext.kCurrentItem]);
-
-        transitionImageLayout(commandBuffer, outputTexture, outputTexture.descriptorInfo.imageLayout,
-                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllCommands,
+        
+        auto aoTexture = m_pResourceManager->getTexture("AOOutput");
+        transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eGeneral,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eRayTracingShaderKHR,
                               vk::PipelineStageFlagBits::eFragmentShader);
 
+        // 간단한 룰
+        // 1. output texture의 newLayout은 무조건 ShaderReadOnly
+        // 2. output texture의 oldLayout은 rt는 무조건 General, raster면 ColorAttachment 또는 DepthAttachment (혹은, 그냥 eUndefined)
+
+        // this texture will be read from final fullscreen triangle shader
         m_finalRenderPass.record(commandBuffer);
 
-        transitionImageLayout(commandBuffer, outputTexture, vk::ImageLayout::eShaderReadOnlyOptimal,
+        // for raster attachments, we don't need to transition to the original layout(eColorAttachmentOptimal)
+        // explicitly. because we defined oldLayout = eUndefined(which means "don't care") for raster render pass initialization.
+        // in contrast, ray traced output texutre layout need to be recovered explicitly.
+        transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eShaderReadOnlyOptimal,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader,
                               vk::PipelineStageFlagBits::eBottomOfPipe);
-
+        
         try {
             commandBuffer.end();
         } catch (vk::SystemError err) {

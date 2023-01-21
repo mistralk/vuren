@@ -30,17 +30,17 @@ void copyBuffer(const VulkanContext &context, vk::CommandPool &commandPool, vk::
 void copyBufferToImage(const VulkanContext &context, vk::CommandPool &commandPool, vk::Buffer buffer, vk::Image image,
                        uint32_t width, uint32_t height);
 
-void transitionImageLayout(vk::CommandBuffer commandBuffer, Texture &texture, vk::ImageLayout oldLayout,
+void transitionImageLayout(vk::CommandBuffer commandBuffer, std::shared_ptr<Texture> pTexture, vk::ImageLayout oldLayout,
                            vk::ImageLayout newLayout,
                            vk::PipelineStageFlags srcStage = vk::PipelineStageFlagBits::eAllCommands,
                            vk::PipelineStageFlags dstStage = vk::PipelineStageFlagBits::eAllCommands);
 
-void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, Texture &texture,
+void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, std::shared_ptr<Texture> pTexture,
                            vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
                            vk::PipelineStageFlags srcStage = vk::PipelineStageFlagBits::eAllCommands,
                            vk::PipelineStageFlags dstStage = vk::PipelineStageFlagBits::eAllCommands);
 
-void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, Texture &texture,
+void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, std::shared_ptr<Texture> pTexture,
                            vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
 
 class ResourceManager {
@@ -52,8 +52,8 @@ public:
 
     void createTextureRGBA32Sfloat(const std::string &name);
     void createDepthTexture(const std::string &name);
-    Texture createModelTexture(const std::string &name, const std::string &filename);
-    void createModelTextureSampler(Texture &texture);
+    std::shared_ptr<Texture> createModelTexture(const std::string &name, const std::string &filename);
+    void createModelTextureSampler(std::shared_ptr<Texture> pTexture);
 
     void loadObjModel(const std::string &name, const std::string &filename, std::shared_ptr<Scene> pScene);
     void createObjectDeviceInfoBuffer(std::shared_ptr<Scene> pScene) {
@@ -63,16 +63,16 @@ public:
     void createAs(vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure &as);
     void destroyAs(AccelerationStructure &as);
 
-    Texture createTexture(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling,
+    std::shared_ptr<Texture> createTexture(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling,
                           vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
-    void createImageView(Texture &texture, vk::Format format, vk::ImageAspectFlags aspectFlags);
-    void createSampler(Texture &texture);
+    void createImageView(std::shared_ptr<Texture> pTexture, vk::Format format, vk::ImageAspectFlags aspectFlags);
+    void createSampler(std::shared_ptr<Texture> pTexture);
 
     Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties,
                       vk::Buffer &buffer, vk::DeviceMemory &memory);
-    void destroyTexture(Texture &texture);
-    void destroyBuffer(Buffer &buffer);
+    void destroyTexture(Texture texture);
+    void destroyBuffer(Buffer buffer);
 
     Buffer createVertexBuffer(const std::string &name, const std::vector<Vertex> &vertices) {
         vk::BufferUsageFlags bufferUsage =
@@ -105,7 +105,7 @@ public:
         mapped = m_pContext->m_device.mapMemory(uniformBuffer.memory, 0, bufferSize);
 
         m_uniformBufferMappedDict.insert({ name, mapped });
-        m_globalBufferDict.insert({ name, uniformBuffer });
+        m_globalBufferDict.insert({ name, std::make_shared<Buffer>(uniformBuffer) });
     }
 
     // if name is not given, the returned buffer will not be managed by resource manager.
@@ -134,24 +134,24 @@ public:
 
         // the buffer has name and will be managed by resource manager.
         if (!name.empty())
-            m_globalBufferDict.insert({ name, newBuffer });
+            m_globalBufferDict.insert({ name, std::make_shared<Buffer>(newBuffer) });
 
         return newBuffer;
     }
 
-    void destroyTextures();
-    void destroyBuffers();
+    void destroyManagedTextures();
+    void destroyManagedBuffers();
 
     void setExtent(vk::Extent2D extent);
     void setCommandPool(vk::CommandPool commandPool);
 
-    Texture getTexture(const std::string &name) {
+    std::shared_ptr<Texture> getTexture(const std::string &name) {
         if (m_globalTextureDict.find(name) == m_globalTextureDict.end())
             throw std::runtime_error("failed to find the texture!");
         return m_globalTextureDict[name];
     }
 
-    Buffer getBuffer(const std::string &name) {
+    std::shared_ptr<Buffer> getBuffer(const std::string &name) {
         if (m_globalBufferDict.find(name) == m_globalBufferDict.end())
             throw std::runtime_error("failed to find the buffer!");
         return m_globalBufferDict[name];
@@ -163,15 +163,21 @@ public:
         return m_uniformBufferMappedDict[name];
     }
 
-    const std::unordered_map<std::string, Texture> &getTextureDict() { return m_globalTextureDict; }
+    const std::unordered_map<std::string, std::shared_ptr<Texture>> &getTextureDict() { return m_globalTextureDict; }
 
-    void insertBuffer(const std::string &name, Buffer buffer) { m_globalBufferDict.insert({ name, buffer }); }
+    void insertBuffer(const std::string &name, Buffer buffer) { 
+        auto pBuffer = std::make_shared<Buffer>(buffer);
+        m_globalBufferDict.insert({ name, pBuffer });
+    }
 
-    void insertTexture(const std::string &name, Texture texture) { m_globalTextureDict.insert({ name, texture }); }
+    void insertTexture(const std::string &name, Texture texture) {
+        auto pTexture = std::make_shared<Texture>(texture);
+        m_globalTextureDict.insert({ name, pTexture });
+    }
 
 private:
-    std::unordered_map<std::string, Texture> m_globalTextureDict;
-    std::unordered_map<std::string, Buffer> m_globalBufferDict;
+    std::unordered_map<std::string, std::shared_ptr<Texture>> m_globalTextureDict;
+    std::unordered_map<std::string, std::shared_ptr<Buffer>> m_globalBufferDict;
     std::unordered_map<std::string, void *> m_uniformBufferMappedDict;
 
     VulkanContext *m_pContext{ nullptr };

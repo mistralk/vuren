@@ -36,7 +36,7 @@ public:
 
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView     = m_pResourceManager->getTexture("HistoryBuffer").descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("HistoryBuffer")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -47,7 +47,7 @@ public:
         };
 
         AttachmentInfo depthStencilAttachment = {
-            .imageView     = m_pResourceManager->getTexture("AccumDepth").descriptorInfo.imageView,
+            .imageView     = m_pResourceManager->getTexture("AccumDepth")->descriptorInfo.imageView,
             .format        = findDepthFormat(*m_pContext),
             .oldLayout     = vk::ImageLayout::eUndefined,
             .newLayout     = vk::ImageLayout::eDepthStencilAttachmentOptimal,
