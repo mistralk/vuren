@@ -35,12 +35,22 @@ public:
 
     void setInstanceCount(uint32_t objectId, uint32_t count) { m_objects[objectId].instanceCount = count; }
 
+    void setCamera(const Camera& camera) {
+        m_camera = camera;
+    }
+
+    const Camera& getCamera() {
+        return m_camera;
+    }
+
 private:
     std::vector<SceneObject> m_objects;
     std::vector<SceneObjectDevice> m_objectsDevice;
 
     std::vector<ObjectInstance> m_instances;
     std::vector<std::shared_ptr<Texture>> m_textures;
+
+    Camera m_camera;
 };
 
 } // namespace vuren

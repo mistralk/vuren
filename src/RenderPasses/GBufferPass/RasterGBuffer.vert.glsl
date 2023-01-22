@@ -38,6 +38,7 @@ void main() {
 	vec4 worldPos = instanceWorld * vec4(inPosition, 1.0);
 
 	// OpenGL uses post-multiplication (vector-on-the-right) with column-major matrix memory layout.
+	// gl_Position = camera.proj * worldPos;
 	gl_Position = camera.proj * camera.view * worldPos;
 
 	outHitData.worldPos = worldPos.xyz;

@@ -26,6 +26,7 @@ Currently it has only been tested on Ubuntu 22.04 and NVIDIA RTX GPU.
     - [x] Rasterized G-buffer rendering
     - [x] Ray-traced G-buffer rendering
     - [x] Ray-traced ambient occlusion
+    - [x] Temporal accumulation
     - [ ] Reference unbiased path tracer
 - [ ] Cemera manipulation
 

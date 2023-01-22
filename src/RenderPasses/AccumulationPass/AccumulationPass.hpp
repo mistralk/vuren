@@ -2,6 +2,7 @@
 #define ACCUMULATION_PASS_HPP
 
 #include "RenderPass.hpp"
+#include "AccumCommon.h"
 
 namespace vuren {
 class AccumulationPass : public RasterRenderPass {
@@ -13,30 +14,61 @@ public:
     void init(VulkanContext *pContext, vk::CommandPool commandPool, std::shared_ptr<ResourceManager> pResourceManager,
               std::shared_ptr<Scene> pScene) override {
         RasterRenderPass::init(pContext, commandPool, pResourceManager, pScene);
+
+        m_accumData.frameCount = 0;
+        m_lastCameraView = m_pScene->getCamera().view;
     }
 
     void updateGui() {
         if (!ImGui::CollapsingHeader("Accumulation Pass"))
             return;
+
+        ImGui::Text(" %d frames accumulated", m_accumData.frameCount);
+    }
+
+    void updateUniformBuffer() {
+        // camera has moved
+        if (m_lastCameraView != m_pScene->getCamera().view) {
+            m_lastCameraView = m_pScene->getCamera().view;
+            m_accumData.frameCount = 0;
+        }
+
+        else
+            m_accumData.frameCount++;
+        
+        memcpy(m_pResourceManager->getMappedBuffer("AccumData"), &m_accumData, sizeof(AccumData));
+    }
+
+    void connectTextureCurrentFrame(const std::string &srcTexture) {
+        m_pResourceManager->connectTextures(srcTexture, "CurrentFrame");
     }
 
     void define() override {
         m_pResourceManager->createTextureRGBA32Sfloat("CurrentFrame");
-        m_pResourceManager->createTextureRGBA32Sfloat("HistoryBuffer");
+        m_pResourceManager->createTextureRGBA32Sfloat("PreviousFrames");
+        m_pResourceManager->createTextureRGBA32Sfloat("AccumulatedOutput");
         m_pResourceManager->createDepthTexture("AccumDepth");
+        m_pResourceManager->createUniformBuffer<AccumData>("AccumData");
+
+        m_pContext->kOffscreenOutputTextureNames.push_back("AccumulatedOutput");
+        
+        transitionImageLayout(*m_pContext, m_commandPool, m_pResourceManager->getTexture("PreviousFrames"), vk::ImageLayout::eUndefined,
+                              vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eAllCommands,
+                              vk::PipelineStageFlagBits::eFragmentShader);
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings;
         bindings.push_back(
             { "CurrentFrame", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1 });
         bindings.push_back(
-            { "HistoryBuffer", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1 });
+            { "PreviousFrames", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1 });
+        bindings.push_back({ "AccumData", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eFragment, 1 });
 
         createDescriptorSet(bindings);
 
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView     = m_pResourceManager->getTexture("HistoryBuffer")->descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("AccumulatedOutput")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -64,31 +96,14 @@ public:
 
         // create a graphics pipeline for this render pass
         setupRasterPipeline("shaders/RenderPasses/AccumulationPass/Accum.vert.spv",
-                            "shaders/RenderPasses/AccumulationPass/Accum.frag.spv");
+                            "shaders/RenderPasses/AccumulationPass/Accum.frag.spv", true);
     }
 
     void record(vk::CommandBuffer commandBuffer) override {
-        
-        // 1. copy a texture(a previous renderpass' output) to the current frame buffer
-        // 이 인풋/아웃풋 관계를 어떻게 해당 렌더패스 바깥에서 정의할 수 있을까? 
-        // 인풋이 여러개일수도 있다.
-        // 아웃풋도 여러개일수도 있다.
-        // 한 패스의 인풋은 기본적으로 텍스쳐 이름을 통해서 define() 함수에서 정의된다. define()을 직접 수정하지 않고, 렌더그래프 레벨에서 인풋 텍스쳐를 설정해주려면?
-        // 어떤 아웃풋과 어떤 인풋을 매칭시켜줘야 한다
-        // 이걸 실제 카피를 통해서 하는건 너무 비효율적이지 않을까?
-        // "이름은 다르지만"(예: 이전패스에서는 RGBcolor, 이번패스에서는 CurrentColor) 동일한 텍스쳐를 가리키도록 설정할 수 있지 않을까?
-        // connectRenderPass(input key, output key)
-        // 이러면 input key와 output key는 동일한 텍스쳐를 레퍼런스하게 된다
-        // define 처음에 create texture할때, 해당 텍스쳐가 존재하는 경우 그대로 연결시키고, 없는경우 새로 만들면 될 것
-        // 삭제할때는?
 
-        // 2. accumulate the history buffer in shader
-
-        std::array<vk::ClearValue, 4> clearValues{};
+        std::array<vk::ClearValue, 2> clearValues{};
         clearValues[0].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-        clearValues[1].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-        clearValues[2].color        = vk::ClearColorValue{ std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-        clearValues[3].depthStencil = vk::ClearDepthStencilValue{ 1.0f, 0 };
+        clearValues[1].depthStencil = vk::ClearDepthStencilValue{ 1.0f, 0 };
 
         vk::RenderPassBeginInfo renderPassInfo{ .renderPass  = m_renderPass,
                                                 .framebuffer = m_framebuffer,
@@ -123,7 +138,8 @@ public:
     }
 
 private:
-    uint32_t m_accumulatedCount{ 0 };
+    AccumData m_accumData;
+    glm::mat4 m_lastCameraView;
 
 }; // class AccumulationPass
 

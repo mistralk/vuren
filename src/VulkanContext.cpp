@@ -169,7 +169,10 @@ void VulkanContext::createLogicalDevice() {
     // you can create all of the command buffers on multiple threads and then
     // submit them all at once on the main thread with a single low-overhead call."
 
-    vk::PhysicalDeviceFeatures deviceFeatures{ .samplerAnisotropy = VK_TRUE, .shaderInt64 = VK_TRUE };
+    vk::PhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.samplerAnisotropy        = VK_TRUE;
+    deviceFeatures.shaderInt64              = VK_TRUE;
+    deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
 
     vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{ .accelerationStructure = VK_TRUE };
     vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ .rayTracingPipeline = VK_TRUE };

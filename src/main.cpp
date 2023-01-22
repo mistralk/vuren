@@ -43,6 +43,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "RenderPasses/AmbientOcclusionPass/AmbientOcclusionPass.hpp"
 #include "RenderPasses/GBufferPass/RayTracedGBufferPass.hpp"
 #include "RenderPasses/GBufferPass/RasterGBufferPass.hpp"
+#include "RenderPasses/AccumulationPass/AccumulationPass.hpp"
 
 namespace vuren {
 
@@ -181,27 +182,18 @@ public:
         };
 
         std::vector<vk::WriteDescriptorSet> descriptorWrites;
+        std::vector<vk::DescriptorImageInfo> imageInfos;
+        imageInfos.reserve(bindings.size());
 
         for (size_t i = 0; i < bindings.size(); ++i) {
             vk::DescriptorImageInfo imageInfo;
-            vk::DescriptorBufferInfo bufferInfo;
-
-            vk::DescriptorBufferInfo *pBufferInfo = nullptr;
-            vk::DescriptorImageInfo *pImageInfo   = nullptr;
 
             switch (bindings[i].descriptorType) {
                 case vk::DescriptorType::eCombinedImageSampler:
                     imageInfo.sampler     = m_pResourceManager->getTexture(bindings[i].name)->descriptorInfo.sampler;
                     imageInfo.imageView   = m_pResourceManager->getTexture(bindings[i].name)->descriptorInfo.imageView;
                     imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                    pImageInfo            = &imageInfo;
-                    break;
-
-                case vk::DescriptorType::eUniformBuffer:
-                    bufferInfo.buffer = m_pResourceManager->getBuffer(bindings[i].name)->descriptorInfo.buffer;
-                    bufferInfo.offset = 0;
-                    bufferInfo.range  = m_pResourceManager->getBuffer(bindings[i].name)->descriptorInfo.range;
-                    pBufferInfo       = &bufferInfo;
+                    imageInfos.emplace_back(imageInfo);
                     break;
 
                 default:
@@ -213,11 +205,11 @@ public:
                                                    .dstArrayElement  = 0,
                                                    .descriptorCount  = 1,
                                                    .descriptorType   = bindings[i].descriptorType,
-                                                   .pImageInfo       = pImageInfo,
-                                                   .pBufferInfo      = pBufferInfo,
+                                                   .pImageInfo       = &imageInfos.back(),
+                                                   .pBufferInfo      = nullptr,
                                                    .pTexelBufferView = nullptr };
 
-            descriptorWrites.push_back(bufferWrite);
+            descriptorWrites.emplace_back(bufferWrite);
         }
 
         m_pContext->m_device.updateDescriptorSets(static_cast<uint32_t>(descriptorWrites.size()),
@@ -265,6 +257,7 @@ private:
     RasterGBufferPass m_rasterGBufferPass;
     RayTracedGBufferPass m_rtGBufferPass;
     AmbientOcclusionPass m_aoPass;
+    AccumulationPass m_accumPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers
@@ -358,6 +351,7 @@ private:
         }
 
         m_aoPass.updateGui();
+        m_accumPass.updateGui();
 
         ImGui::End();
     }
@@ -374,9 +368,16 @@ private:
         glfwSetFramebufferSizeCallback(m_pWindow, framebufferResizeCallback);
     }
 
-    static void framebufferResizeCallback(GLFWwindow *window, int width, int height) {
-        auto app                  = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
+    static void framebufferResizeCallback(GLFWwindow *pWindow, int width, int height) {
+        auto app                  = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
         app->m_framebufferResized = true;
+    }
+
+    static void keyCallback(GLFWwindow* pWindow, int key, int scancode, int action, int mods) {
+        auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
+        if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+            app->updateCameraBuffer("CameraBuffer");
+        }
     }
 
     void initVulkan() {
@@ -422,6 +423,11 @@ private:
         m_aoPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
         m_aoPass.setup();
 
+        m_accumPass.setExtent(m_swapChainExtent);
+        m_accumPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        m_accumPass.connectTextureCurrentFrame("AOOutput");
+        m_accumPass.setup();
+
         m_finalRenderPass.setSwapChainImagePointers(m_swapChainFramebuffers, m_swapChainColorImages,
                                                     m_swapChainColorImageViews);
         m_finalRenderPass.setup();
@@ -433,12 +439,17 @@ private:
     void mainLoop() {
         Timer timer;
 
+        updateCameraBuffer("CameraBuffer");
+
         while (!glfwWindowShouldClose(m_pWindow)) {
             float deltaTime = static_cast<float>(timer.elapsed());
             glfwPollEvents();
+            glfwSetKeyCallback(m_pWindow, keyCallback);
 
             updateGUI(deltaTime);
             // updateScene(deltaTime)
+            m_aoPass.updateUniformBuffer();
+            m_accumPass.updateUniformBuffer();
 
             drawFrame();
         }
@@ -453,6 +464,7 @@ private:
         m_rasterGBufferPass.cleanup();
         // m_rtGBufferPass.cleanup();
         m_aoPass.cleanup();
+        m_accumPass.cleanup();
         m_finalRenderPass.cleanup();
 
         m_pResourceManager->destroyManagedTextures();
@@ -674,10 +686,6 @@ private:
             throw std::runtime_error("failed to begin recording command buffer!");
         }
 
-        // these are not device command. I think they have to be moved out from this command buffer recording..
-        updateCameraBuffer("CameraBuffer"); 
-        m_aoPass.updateAoDataUniformBuffer();
-
         // if (kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedPosWorld" ||
         //     kOffscreenOutputTextureNames[kCurrentItem] == "RayTracedNormalWorld")
         //     m_rtGBufferPass.record(commandBuffer);
@@ -687,8 +695,9 @@ private:
         m_rasterGBufferPass.record(commandBuffer);
 
         // 결국 descriptor info는 cpu 메모리에 정의된 구조체에 불과
-        // 레코딩 단계에서 로드하더라도, 런타임에 동적으로 바뀐 디스크립터 인포가 해당 커맨드 실행 시점에서 적용되었다는 보장이 없음 (그렇게 하려면 CPU 펜스가 필요함)
-        // 아예 명시적인 분기로 만들던가 아니면 렌더그래프를 "컴파일" 하던가
+        // 레코딩 단계에서 로드하더라도, 런타임에 동적으로 바뀐 디스크립터 인포가 해당 커맨드 실행 시점에서 적용되었다는
+        // 보장이 없음 (그렇게 하려면 CPU 펜스가 필요함) 아예 명시적인 분기로 만들던가 아니면 렌더그래프를 "컴파일"
+        // 하던가
 
         auto colorTexture = m_pResourceManager->getTexture("RasterColor");
         transitionImageLayout(commandBuffer, colorTexture, vk::ImageLayout::eColorAttachmentOptimal,
@@ -707,7 +716,7 @@ private:
 
         // AO pass output texture
         m_aoPass.record(commandBuffer);
-        
+
         auto aoTexture = m_pResourceManager->getTexture("AOOutput");
         transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eGeneral,
                               vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eRayTracingShaderKHR,
@@ -715,18 +724,26 @@ private:
 
         // 간단한 룰
         // 1. output texture의 newLayout은 무조건 ShaderReadOnly
-        // 2. output texture의 oldLayout은 rt는 무조건 General, raster면 ColorAttachment 또는 DepthAttachment (혹은, 그냥 eUndefined)
+        // 2. output texture의 oldLayout은 rt는 무조건 General, raster면 ColorAttachment 또는 DepthAttachment (혹은,
+        // 그냥 eUndefined)
+
+        m_accumPass.record(commandBuffer);
+
+        auto accumTexture = m_pResourceManager->getTexture("AccumulatedOutput");
+        transitionImageLayout(commandBuffer, accumTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eFragmentShader);
 
         // this texture will be read from final fullscreen triangle shader
         m_finalRenderPass.record(commandBuffer);
 
         // for raster attachments, we don't need to transition to the original layout(eColorAttachmentOptimal)
-        // explicitly. because we defined oldLayout = eUndefined(which means "don't care") for raster render pass initialization.
-        // in contrast, ray traced output texutre layout need to be recovered explicitly.
+        // explicitly. because we defined oldLayout = eUndefined(which means "don't care") for raster render pass
+        // initialization. in contrast, ray traced output texutre layout need to be recovered explicitly.
         transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eShaderReadOnlyOptimal,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader,
                               vk::PipelineStageFlagBits::eBottomOfPipe);
-        
+
         try {
             commandBuffer.end();
         } catch (vk::SystemError err) {
@@ -859,22 +876,23 @@ private:
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time       = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        Camera ubo{};
-        ubo.view = glm::lookAt(
+        Camera camera{};
+        camera.view = glm::lookAt(
             glm::vec3(3.0 * glm::cos(time * glm::radians(90.0f)), 3.0 * glm::sin(time * glm::radians(90.0f)), 2.0f),
             glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float) m_swapChainExtent.height,
+        camera.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float) m_swapChainExtent.height,
                                     0.1f, 10.0f);
 
         // GLM's Y coordinate of the clip coordinates is inverted
         // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.
-        ubo.proj[1][1] *= -1;
+        camera.proj[1][1] *= -1;
 
         // for camera ray generation
-        ubo.invView = glm::inverse(ubo.view);
-        ubo.invProj = glm::inverse(ubo.proj);
+        camera.invView = glm::inverse(camera.view);
+        camera.invProj = glm::inverse(camera.proj);
 
-        memcpy(m_pResourceManager->getMappedBuffer(name), &ubo, sizeof(ubo));
+        m_pScene->setCamera(camera);
+        memcpy(m_pResourceManager->getMappedBuffer(name), &camera, sizeof(camera));
     }
 };
 

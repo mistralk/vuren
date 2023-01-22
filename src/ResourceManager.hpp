@@ -48,7 +48,7 @@ public:
     ResourceManager(VulkanContext *pContext);
     ~ResourceManager();
 
-    void connectInputOutputTexture(const std::string& outputTextureKey, const std::string& inputTextureKey);
+    void connectTextures(const std::string &srcTexture, const std::string &dstTexture);
 
     void createTextureRGBA32Sfloat(const std::string &name);
     void createDepthTexture(const std::string &name);
@@ -71,8 +71,8 @@ public:
     Buffer createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties,
                       vk::Buffer &buffer, vk::DeviceMemory &memory);
-    void destroyTexture(Texture texture);
-    void destroyBuffer(Buffer buffer);
+    void destroyTexture(Texture& texture);
+    void destroyBuffer(Buffer& buffer);
 
     Buffer createVertexBuffer(const std::string &name, const std::vector<Vertex> &vertices) {
         vk::BufferUsageFlags bufferUsage =

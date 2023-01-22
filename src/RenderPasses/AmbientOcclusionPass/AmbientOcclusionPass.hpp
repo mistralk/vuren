@@ -63,7 +63,8 @@ public:
                                    m_extent.height, 1);
     }
 
-    void updateAoDataUniformBuffer() {
+    void updateUniformBuffer() {
+        m_aoData.frameCount++;
         memcpy(m_pResourceManager->getMappedBuffer("AoData"), &m_aoData, sizeof(AoData));
     }
 

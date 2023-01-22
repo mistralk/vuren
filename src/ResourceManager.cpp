@@ -11,9 +11,12 @@ ResourceManager::ResourceManager(VulkanContext *pContext) : m_pContext(pContext)
 
 ResourceManager::~ResourceManager() {}
 
-// make inputTextureKey point to outputTexture
-void ResourceManager::connectInputOutputTexture(const std::string& outputTextureKey, const std::string& inputTextureKey) {
-    m_globalTextureDict[inputTextureKey] = m_globalTextureDict[outputTextureKey];
+// make inputTextureKey point to previous pass' output texture
+void ResourceManager::connectTextures(const std::string &srcTexture, const std::string &dstTexture) {
+    if (m_globalTextureDict.find(dstTexture) != m_globalTextureDict.end()) {
+        throw std::runtime_error("this destination texture is already pointing a texture!");
+    }
+    m_globalTextureDict.insert({ dstTexture, m_globalTextureDict[srcTexture] });
 }
 
 void ResourceManager::createTextureRGBA32Sfloat(const std::string &name) {
@@ -72,9 +75,10 @@ std::shared_ptr<Texture> ResourceManager::createModelTexture(const std::string &
 
     stbi_image_free(pixels);
 
-    std::shared_ptr<Texture> pModelTexture = createTexture(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
-                                         vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-                                         vk::MemoryPropertyFlagBits::eDeviceLocal);
+    std::shared_ptr<Texture> pModelTexture =
+        createTexture(texWidth, texHeight, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
+                      vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                      vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     // Transition the texture image to ImageLayout::eTransferDstOptimal
     // The image was create with the ImageLayout::eUndefined layout
@@ -130,18 +134,35 @@ void ResourceManager::createModelTextureSampler(std::shared_ptr<Texture> pTextur
 }
 
 void ResourceManager::destroyManagedTextures() {
-    for (auto texture : m_globalTextureDict) {
+    for (auto texture: m_globalTextureDict) {
         destroyTexture(*texture.second);
     }
 }
 
 void ResourceManager::destroyManagedBuffers() {
-    for (auto buffer : m_globalBufferDict) {
-        if (m_uniformBufferMappedDict.find(buffer.first) != m_uniformBufferMappedDict.end()) {
-            m_uniformBufferMappedDict.erase(buffer.first);
-        }
+    for (auto buffer: m_globalBufferDict) {
         destroyBuffer(*buffer.second);
     }
+}
+
+void ResourceManager::destroyTexture(Texture& texture) {
+    if (texture.descriptorInfo.sampler) m_pContext->m_device.destroySampler(texture.descriptorInfo.sampler, nullptr);
+    if (texture.image) m_pContext->m_device.destroyImage(texture.image, nullptr);
+    if (texture.descriptorInfo.imageView) m_pContext->m_device.destroyImageView(texture.descriptorInfo.imageView, nullptr);
+    if (texture.memory) m_pContext->m_device.freeMemory(texture.memory, nullptr);
+
+    texture.descriptorInfo.sampler = VK_NULL_HANDLE;
+    texture.image = VK_NULL_HANDLE;
+    texture.descriptorInfo.imageView = VK_NULL_HANDLE;
+    texture.memory = VK_NULL_HANDLE;
+}
+
+void ResourceManager::destroyBuffer(Buffer& buffer) {
+    if (buffer.descriptorInfo.buffer) m_pContext->m_device.destroyBuffer(buffer.descriptorInfo.buffer, nullptr);
+    if (buffer.memory) m_pContext->m_device.freeMemory(buffer.memory, nullptr);
+
+    buffer.descriptorInfo.buffer = VK_NULL_HANDLE;
+    buffer.memory = VK_NULL_HANDLE;
 }
 
 void ResourceManager::setExtent(vk::Extent2D extent) { m_extent = extent; }
@@ -193,8 +214,8 @@ void ResourceManager::loadObjModel(const std::string &name, const std::string &f
 
     SceneObject object = { .vertexBufferSize = static_cast<uint32_t>(vertices.size()),
                            .indexBufferSize  = static_cast<uint32_t>(indices.size()),
-                           .pVertexBuffer     = m_globalBufferDict[vertexBufferKey],
-                           .pIndexBuffer      = m_globalBufferDict[indexBufferKey] };
+                           .pVertexBuffer    = m_globalBufferDict[vertexBufferKey],
+                           .pIndexBuffer     = m_globalBufferDict[indexBufferKey] };
 
     // using this address information, shaders can access these buffers by indexing.
     SceneObjectDevice objectDeviceInfo = {
@@ -260,20 +281,9 @@ void ResourceManager::destroyAs(AccelerationStructure &as) {
     m_pContext->m_device.destroyAccelerationStructureKHR(as.as);
 }
 
-void ResourceManager::destroyTexture(Texture texture) {
-    m_pContext->m_device.destroySampler(texture.descriptorInfo.sampler, nullptr);
-    m_pContext->m_device.destroyImage(texture.image, nullptr);
-    m_pContext->m_device.destroyImageView(texture.descriptorInfo.imageView, nullptr);
-    m_pContext->m_device.freeMemory(texture.memory, nullptr);
-}
-
-void ResourceManager::destroyBuffer(Buffer buffer) {
-    m_pContext->m_device.destroyBuffer(buffer.descriptorInfo.buffer, nullptr);
-    m_pContext->m_device.freeMemory(buffer.memory, nullptr);
-}
-
-std::shared_ptr<Texture> ResourceManager::createTexture(uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling,
-                                       vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) {
+std::shared_ptr<Texture> ResourceManager::createTexture(uint32_t width, uint32_t height, vk::Format format,
+                                                        vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+                                                        vk::MemoryPropertyFlags properties) {
     auto texture = std::make_shared<Texture>();
 
     vk::ImageCreateInfo imageInfo{ .imageType             = vk::ImageType::e2D,
@@ -309,7 +319,8 @@ std::shared_ptr<Texture> ResourceManager::createTexture(uint32_t width, uint32_t
     return texture;
 }
 
-void ResourceManager::createImageView(std::shared_ptr<Texture> pTexture, vk::Format format, vk::ImageAspectFlags aspectFlags) {
+void ResourceManager::createImageView(std::shared_ptr<Texture> pTexture, vk::Format format,
+                                      vk::ImageAspectFlags aspectFlags) {
     vk::ImageViewCreateInfo viewInfo{ .image            = pTexture->image,
                                       .viewType         = vk::ImageViewType::e2D,
                                       .format           = format,
@@ -451,8 +462,8 @@ void copyBufferToImage(const VulkanContext &context, vk::CommandPool &commandPoo
     endSingleTimeCommands(context, commandPool, commandBuffer);
 }
 
-void transitionImageLayout(vk::CommandBuffer commandBuffer, std::shared_ptr<Texture> pTexture, vk::ImageLayout oldLayout,
-                           vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage,
+void transitionImageLayout(vk::CommandBuffer commandBuffer, std::shared_ptr<Texture> pTexture,
+                           vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage,
                            vk::PipelineStageFlags dstStage) {
     vk::ImageMemoryBarrier barrier;
 
@@ -522,16 +533,17 @@ void transitionImageLayout(vk::CommandBuffer commandBuffer, std::shared_ptr<Text
     commandBuffer.pipelineBarrier(srcStage, dstStage, {}, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
-void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, std::shared_ptr<Texture> pTexture,
-                           vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags srcStage,
-                           vk::PipelineStageFlags dstStage) {
+void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool,
+                           std::shared_ptr<Texture> pTexture, vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
+                           vk::PipelineStageFlags srcStage, vk::PipelineStageFlags dstStage) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
     transitionImageLayout(commandBuffer, pTexture, oldLayout, newLayout, srcStage, dstStage);
     endSingleTimeCommands(context, commandPool, commandBuffer);
 }
 
-void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool, std::shared_ptr<Texture> pTexture,
-                           vk::Format format, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
+void transitionImageLayout(const VulkanContext &context, vk::CommandPool &commandPool,
+                           std::shared_ptr<Texture> pTexture, vk::Format format, vk::ImageLayout oldLayout,
+                           vk::ImageLayout newLayout) {
     vk::CommandBuffer commandBuffer = beginSingleTimeCommands(context, commandPool);
 
     // transition
