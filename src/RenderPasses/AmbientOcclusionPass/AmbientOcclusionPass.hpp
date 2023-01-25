@@ -20,7 +20,7 @@ public:
     }
 
     void updateGui() {
-        if (!ImGui::CollapsingHeader("Ambiend Occlusion Pass"))
+        if (!ImGui::CollapsingHeader("Ambient Occlusion Pass"))
             return;
 
         ImGui::DragFloat("Radius (ray.maxT)", &m_aoData.radius, 0.01f, 0.0f, 100.0f, "%.02f");

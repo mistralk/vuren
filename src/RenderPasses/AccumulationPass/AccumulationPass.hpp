@@ -16,7 +16,7 @@ public:
         RasterRenderPass::init(pContext, commandPool, pResourceManager, pScene);
 
         m_accumData.frameCount = 0;
-        m_lastCameraView = m_pScene->getCamera().view;
+        m_lastCameraView = m_pScene->getCamera().getData().view;
     }
 
     void updateGui() {
@@ -28,8 +28,8 @@ public:
 
     void updateUniformBuffer() {
         // camera has moved
-        if (m_lastCameraView != m_pScene->getCamera().view) {
-            m_lastCameraView = m_pScene->getCamera().view;
+        if (m_lastCameraView != m_pScene->getCamera().getData().view) {
+            m_lastCameraView = m_pScene->getCamera().getData().view;
             m_accumData.frameCount = 0;
         }
 

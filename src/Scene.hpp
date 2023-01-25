@@ -2,6 +2,7 @@
 #define SCENE_HPP
 
 #include "Common.hpp"
+#include "Camera.hpp"
 
 #include <string>
 #include <vector>
@@ -35,11 +36,7 @@ public:
 
     void setInstanceCount(uint32_t objectId, uint32_t count) { m_objects[objectId].instanceCount = count; }
 
-    void setCamera(const Camera& camera) {
-        m_camera = camera;
-    }
-
-    const Camera& getCamera() {
+    Camera& getCamera() {
         return m_camera;
     }
 

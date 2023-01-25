@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -268,119 +267,49 @@ public:
     Application() {}
 
     void run() {
-        initWindow();
-        initVulkan();
+        initGlfw();
+        initScene();
+        initRenderGraph();
         initImGui();
         mainLoop();
         cleanup();
     }
 
 private:
-    void initImGui() {
-        // create descriptor pool for imgui
-        vk::DescriptorPoolSize poolSizes[] = { { vk::DescriptorType::eSampler, 1000 },
-                                               { vk::DescriptorType::eCombinedImageSampler, 1000 },
-                                               { vk::DescriptorType::eSampledImage, 1000 },
-                                               { vk::DescriptorType::eStorageImage, 1000 },
-                                               { vk::DescriptorType::eUniformTexelBuffer, 1000 },
-                                               { vk::DescriptorType::eStorageTexelBuffer, 1000 },
-                                               { vk::DescriptorType::eUniformBuffer, 1000 },
-                                               { vk::DescriptorType::eStorageBuffer, 1000 },
-                                               { vk::DescriptorType::eUniformBufferDynamic, 1000 },
-                                               { vk::DescriptorType::eStorageBufferDynamic, 1000 },
-                                               { vk::DescriptorType::eInputAttachment, 1000 } };
-
-        vk::DescriptorPoolCreateInfo poolCreateInfo = { .flags   = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                                        .maxSets = 1000,
-                                                        .poolSizeCount = std::size(poolSizes),
-                                                        .pPoolSizes    = poolSizes };
-
-        if (m_vkContext.m_device.createDescriptorPool(&poolCreateInfo, nullptr, &m_imguiDescriptorPool) !=
-            vk::Result::eSuccess) {
-            throw std::runtime_error("failed to create descriptor pool for imgui!");
-        }
-
-        // initialize imgui
-        ImGui::CreateContext();
-        ImGui_ImplGlfw_InitForVulkan(m_pWindow, true);
-
-        ImGui_ImplVulkan_InitInfo initInfo = { .Instance       = m_vkContext.m_instance,
-                                               .PhysicalDevice = m_vkContext.m_physicalDevice,
-                                               .Device         = m_vkContext.m_device,
-                                               .Queue          = m_vkContext.m_graphicsQueue,
-                                               .DescriptorPool = m_imguiDescriptorPool,
-                                               .MinImageCount  = m_imageCount,
-                                               .ImageCount     = m_imageCount,
-                                               .MSAASamples    = VK_SAMPLE_COUNT_1_BIT };
-
-        ImGui_ImplVulkan_Init(&initInfo, m_finalRenderPass.getRenderPass());
-
-        ImGui::StyleColorsClassic();
-
-        // execute a GPU command to upload imgui font textures
-        vk::CommandBuffer commandBuffer = beginSingleTimeCommands(m_vkContext, m_commandPool);
-        ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
-        endSingleTimeCommands(m_vkContext, m_commandPool, commandBuffer);
-        ImGui_ImplVulkan_DestroyFontUploadObjects();
-    }
-
-    void updateGUI(float deltaTime) {
-        // ImGui_ImplVulkan_NewFrame(); // do i need it?
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-        auto imguiIO      = ImGui::GetIO();
-        imguiIO.DeltaTime = deltaTime;
-
-        ImGui::Begin("Render Configuration");
-        ImGui::Text("Statistics");
-        ImGui::Text(" %.2f FPS (%.2f ms)", imguiIO.Framerate, imguiIO.DeltaTime);
-
-        if (ImGui::BeginCombo("Output", m_vkContext.kOffscreenOutputTextureNames[m_vkContext.kCurrentItem].c_str(),
-                              0)) {
-            for (int i = 0; i < m_vkContext.kOffscreenOutputTextureNames.size(); ++i) {
-                const bool isSelected = (m_vkContext.kCurrentItem == i);
-                if (ImGui::Selectable(m_vkContext.kOffscreenOutputTextureNames[i].c_str(), isSelected)) {
-                    m_vkContext.kCurrentItem = i;
-                    m_vkContext.kDirty       = true;
-                }
-
-                if (isSelected)
-                    ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-
-        m_aoPass.updateGui();
-        m_accumPass.updateGui();
-
-        ImGui::End();
-    }
-
-    void initWindow() {
-        glfwInit();
-
-        // tell glfw to not create an OpenGL context
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-        m_pWindow = glfwCreateWindow(kWidth, kHeight, "vuren", nullptr, nullptr);
-        glfwSetWindowUserPointer(m_pWindow, this);
-        glfwSetFramebufferSizeCallback(m_pWindow, framebufferResizeCallback);
-    }
-
-    static void framebufferResizeCallback(GLFWwindow *pWindow, int width, int height) {
-        auto app                  = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
-        app->m_framebufferResized = true;
-    }
-
-    static void keyCallback(GLFWwindow* pWindow, int key, int scancode, int action, int mods) {
-        auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
-        if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
-            app->updateCameraBuffer("CameraBuffer");
-        }
-    }
-
     void initVulkan() {
+        // init vulkan instance
+        // init resource manager
+        // init swap chain
+        // init command pool
+    }
+
+    void initScene() {
+        // init camera and assets
+    }
+
+    void initRenderGraph() {
+        // an example application using vuren's render passes: hybrid ambient occlusion
+        //
+        //     +--------------------+
+        //     |     Rasterized     |
+        //     |    G-Buffer Pass   |
+        //     +-----+--------+-----+
+        // World Pos |        | World Normal
+        //     +-----v--------v-----+
+        //     |  Ambient Occlusion |
+        //     |        Pass        |
+        //     +---------+----------+
+        //               | AO Output
+        //     +---------v----------+
+        //     |      Temporal      |
+        //     |  Accumulation Pass |
+        //     +---------+----------+
+        //               | Accumulated Frames
+        //     +---------v----------+
+        //     | Final Presentation |
+        //     |    (Swap Chain)    |
+        //     +--------------------+
+
         m_vkContext.init("test", m_pWindow);
 
         m_pResourceManager = std::make_shared<ResourceManager>(&m_vkContext);
@@ -401,7 +330,12 @@ private:
         createCommandPool();
         m_pResourceManager->setCommandPool(m_commandPool);
 
-        m_pResourceManager->createUniformBuffer<Camera>("CameraBuffer");
+        // Scene resources description
+        m_pResourceManager->createUniformBuffer<CameraData>("CameraBuffer");
+        m_pScene->getCamera().setExtent(m_swapChainExtent);
+        m_pScene->getCamera().setMappedCameraBuffer(m_pResourceManager->getMappedBuffer("CameraBuffer"));
+        m_pScene->getCamera().init();
+
         auto texture = m_pResourceManager->createModelTexture("VikingRoom", "assets/textures/viking_room.png");
         m_pScene->addTexture(texture);
         auto texture1 = m_pResourceManager->createModelTexture("Bunny", "assets/textures/texture.jpg");
@@ -411,8 +345,9 @@ private:
         m_pResourceManager->loadObjModel("Bunny", "assets/models/bunny.obj", m_pScene);
         m_pResourceManager->createObjectDeviceInfoBuffer(m_pScene);
 
-        // createRandomInstances(0, 10);
-        createRandomInstances(0, 10);
+        createRandomInstances(0, 30);
+
+        // Render graph description
 
         m_rasterGBufferPass.setup();
 
@@ -439,15 +374,12 @@ private:
     void mainLoop() {
         Timer timer;
 
-        updateCameraBuffer("CameraBuffer");
-
         while (!glfwWindowShouldClose(m_pWindow)) {
             float deltaTime = static_cast<float>(timer.elapsed());
             glfwPollEvents();
-            glfwSetKeyCallback(m_pWindow, keyCallback);
 
             updateGUI(deltaTime);
-            // updateScene(deltaTime)
+            manipulateCamera();
             m_aoPass.updateUniformBuffer();
             m_accumPass.updateUniformBuffer();
 
@@ -490,19 +422,19 @@ private:
         m_pScene->setInstanceCount(objId, instanceCount);
 
         static std::default_random_engine rng((unsigned) time(nullptr));
-        std::uniform_real_distribution<float> uniformDist(0.0, 1.0);
-        std::uniform_real_distribution<float> uniformDistPos(-1.0, 1.0);
+        std::uniform_real_distribution<float> uniformDist(0.0f, 1.0f);
+        std::uniform_real_distribution<float> uniformDistPos(-2.0f, 2.0f);
         for (uint32_t i = 0; i < instanceCount; ++i) {
             ObjectInstance instance;
 
             auto pos   = glm::translate(glm::identity<glm::mat4>(),
                                         glm::vec3(uniformDistPos(rng), uniformDistPos(rng), uniformDistPos(rng)));
-            auto scale = glm::scale(glm::identity<glm::mat4>(), glm::vec3(0.5f, 0.5f, 0.5f));
-            auto rot_z = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f),
+            auto scale = glm::scale(glm::identity<glm::mat4>(), glm::vec3(1.0f, 1.0f, 1.0f));
+            auto rot_z = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(360.0f),
                                      glm::vec3(0.0f, 0.0f, 1.0f));
-            auto rot_y = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f),
+            auto rot_y = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(360.0f),
                                      glm::vec3(0.0f, 1.0f, 0.0f));
-            auto rot_x = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(90.0f),
+            auto rot_x = glm::rotate(glm::identity<glm::mat4>(), uniformDist(rng) * glm::radians(360.0f),
                                      glm::vec3(1.0f, 0.0f, 0.0f));
 
             // glsl and glm: uses column-major order matrices of column vectors
@@ -870,29 +802,152 @@ private:
         // updateFinalDescriptorSets();
     }
 
-    void updateCameraBuffer(std::string name) {
-        static auto startTime = std::chrono::high_resolution_clock::now();
+    void initImGui() {
+        // create descriptor pool for imgui
+        vk::DescriptorPoolSize poolSizes[] = { { vk::DescriptorType::eSampler, 1000 },
+                                               { vk::DescriptorType::eCombinedImageSampler, 1000 },
+                                               { vk::DescriptorType::eSampledImage, 1000 },
+                                               { vk::DescriptorType::eStorageImage, 1000 },
+                                               { vk::DescriptorType::eUniformTexelBuffer, 1000 },
+                                               { vk::DescriptorType::eStorageTexelBuffer, 1000 },
+                                               { vk::DescriptorType::eUniformBuffer, 1000 },
+                                               { vk::DescriptorType::eStorageBuffer, 1000 },
+                                               { vk::DescriptorType::eUniformBufferDynamic, 1000 },
+                                               { vk::DescriptorType::eStorageBufferDynamic, 1000 },
+                                               { vk::DescriptorType::eInputAttachment, 1000 } };
 
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float time       = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        vk::DescriptorPoolCreateInfo poolCreateInfo = { .flags   = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                                        .maxSets = 1000,
+                                                        .poolSizeCount = std::size(poolSizes),
+                                                        .pPoolSizes    = poolSizes };
 
-        Camera camera{};
-        camera.view = glm::lookAt(
-            glm::vec3(3.0 * glm::cos(time * glm::radians(90.0f)), 3.0 * glm::sin(time * glm::radians(90.0f)), 2.0f),
-            glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        camera.proj = glm::perspective(glm::radians(45.0f), m_swapChainExtent.width / (float) m_swapChainExtent.height,
-                                    0.1f, 10.0f);
+        if (m_vkContext.m_device.createDescriptorPool(&poolCreateInfo, nullptr, &m_imguiDescriptorPool) !=
+            vk::Result::eSuccess) {
+            throw std::runtime_error("failed to create descriptor pool for imgui!");
+        }
 
-        // GLM's Y coordinate of the clip coordinates is inverted
-        // To compensate this, flip the sign on the scaling factor of the Y axis in the proj matrix.
-        camera.proj[1][1] *= -1;
+        // initialize imgui
+        ImGui::CreateContext();
+        ImGui_ImplGlfw_InitForVulkan(m_pWindow, true);
 
-        // for camera ray generation
-        camera.invView = glm::inverse(camera.view);
-        camera.invProj = glm::inverse(camera.proj);
+        ImGui_ImplVulkan_InitInfo initInfo = { .Instance       = m_vkContext.m_instance,
+                                               .PhysicalDevice = m_vkContext.m_physicalDevice,
+                                               .Device         = m_vkContext.m_device,
+                                               .Queue          = m_vkContext.m_graphicsQueue,
+                                               .DescriptorPool = m_imguiDescriptorPool,
+                                               .MinImageCount  = m_imageCount,
+                                               .ImageCount     = m_imageCount,
+                                               .MSAASamples    = VK_SAMPLE_COUNT_1_BIT };
 
-        m_pScene->setCamera(camera);
-        memcpy(m_pResourceManager->getMappedBuffer(name), &camera, sizeof(camera));
+        ImGui_ImplVulkan_Init(&initInfo, m_finalRenderPass.getRenderPass());
+
+        ImGui::StyleColorsClassic();
+
+        // execute a GPU command to upload imgui font textures
+        vk::CommandBuffer commandBuffer = beginSingleTimeCommands(m_vkContext, m_commandPool);
+        ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+        endSingleTimeCommands(m_vkContext, m_commandPool, commandBuffer);
+        ImGui_ImplVulkan_DestroyFontUploadObjects();
+    }
+
+    void updateGUI(float deltaTime) {
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        auto imguiIO      = ImGui::GetIO();
+        imguiIO.DeltaTime = deltaTime;
+
+        ImGui::Begin("Render Configuration");
+        ImGui::Text("Statistics");
+        ImGui::Text(" %.2f FPS (%.2f ms)", imguiIO.Framerate, imguiIO.DeltaTime);
+
+        if (ImGui::BeginCombo("Output", m_vkContext.kOffscreenOutputTextureNames[m_vkContext.kCurrentItem].c_str(),
+                              0)) {
+            for (int i = 0; i < m_vkContext.kOffscreenOutputTextureNames.size(); ++i) {
+                const bool isSelected = (m_vkContext.kCurrentItem == i);
+                if (ImGui::Selectable(m_vkContext.kOffscreenOutputTextureNames[i].c_str(), isSelected)) {
+                    m_vkContext.kCurrentItem = i;
+                    m_vkContext.kDirty       = true;
+                }
+
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        m_aoPass.updateGui();
+        m_accumPass.updateGui();
+
+        ImGui::End();
+    }
+
+    void initGlfw() {
+        glfwInit();
+
+        // tell glfw to not create an OpenGL context
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+        // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        m_pWindow = glfwCreateWindow(kWidth, kHeight, "vuren", nullptr, nullptr);
+        glfwSetWindowUserPointer(m_pWindow, this);
+        glfwSetFramebufferSizeCallback(m_pWindow, framebufferResizeCallback);
+        glfwSetMouseButtonCallback(m_pWindow, mouseCallback);
+        glfwSetKeyCallback(m_pWindow, keyCallback);
+        // glfwSetInputMode(m_pWindow, GLFW_STICKY_MOUSE_BUTTONS, GLFW_TRUE);
+    }
+
+    static void framebufferResizeCallback(GLFWwindow *pWindow, int width, int height) {
+        auto app                  = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
+        app->m_framebufferResized = true;
+    }
+
+    static void keyCallback(GLFWwindow *pWindow, int key, int scancode, int action, int mods) {
+        auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
+    }
+
+    static void mouseCallback(GLFWwindow *pWindow, int button, int action, int mods) {
+        auto app = reinterpret_cast<Application *>(glfwGetWindowUserPointer(pWindow));
+
+        static bool pressed = false;
+
+        if (!pressed) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+                pressed = true;
+                double xpos, ypos;
+                glfwGetCursorPos(pWindow, &xpos, &ypos);
+                app->m_pScene->getCamera().pressLeftMouse(xpos, ypos);
+            }
+        } else {
+            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
+                pressed = false;
+                double xpos, ypos;
+                glfwGetCursorPos(pWindow, &xpos, &ypos);
+                app->m_pScene->getCamera().releaseLeftMouse(xpos, ypos);
+            }
+        }
+    }
+
+    void manipulateCamera() {
+        // currently camera is not optimzed (so many duplicated ops)
+
+        // dolly
+        if (glfwGetKey(m_pWindow, GLFW_KEY_W))
+            m_pScene->getCamera().forward(0.003f);
+        if (glfwGetKey(m_pWindow, GLFW_KEY_S))
+            m_pScene->getCamera().forward(-0.003f);
+        if (glfwGetKey(m_pWindow, GLFW_KEY_A))
+            m_pScene->getCamera().dolly(-0.003f);
+        if (glfwGetKey(m_pWindow, GLFW_KEY_D))
+            m_pScene->getCamera().dolly(0.003f);
+
+        // pan
+        if (m_pScene->getCamera().isLeftMousePressed()) {
+            double xpos, ypos;
+            glfwGetCursorPos(m_pWindow, &xpos, &ypos);
+            m_pScene->getCamera().rotate(static_cast<float>(xpos), static_cast<float>(ypos));
+        }
+
+        m_pScene->getCamera().updateCamera();
     }
 };
 

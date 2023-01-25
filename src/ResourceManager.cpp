@@ -185,6 +185,8 @@ void ResourceManager::loadObjModel(const std::string &name, const std::string &f
         throw std::runtime_error(warn + err);
     }
 
+    // model loading and vertex deduplication function is based off of Vulkan Tutorial's code.
+    // https://vulkan-tutorial.com/Loading_models#page_Loading-vertices-and-indices
     std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
     for (const auto &shape: shapes) {

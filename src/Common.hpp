@@ -123,7 +123,7 @@ struct ObjectInstance {
 #endif // __cplusplus
 };
 
-struct Camera {
+struct CameraData {
     mat4 view;
     mat4 proj;
     mat4 invView;

@@ -1,6 +1,6 @@
 # vuren
 
-![teaser](./docs/imgs/2023-01-15-21-58-34.png)
+![teaser](./docs/imgs/2023-01-26-01-54-58.png)
 
 A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by several tutorials and examples. I started this project with following the great [Vulkan Tutorial](https://vulkan-tutorial.com/), but now it has a different architecture and additional features.
 
@@ -28,7 +28,7 @@ Currently it has only been tested on Ubuntu 22.04 and NVIDIA RTX GPU.
     - [x] Ray-traced ambient occlusion
     - [x] Temporal accumulation
     - [ ] Reference unbiased path tracer
-- [ ] Cemera manipulation
+- [x] Cemera manipulation
 
 ## Licenses
 

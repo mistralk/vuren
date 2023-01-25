@@ -11,7 +11,7 @@
 layout(location = 0) rayPayloadEXT SurfaceHit payload;
 
 layout(set = 0, binding = 0) uniform _Camera {
-	Camera camera;
+	CameraData camera;
 };
 layout(set = 0, binding = 3, rgba32f) uniform image2D worldPos;
 layout(set = 0, binding = 4, rgba32f) uniform image2D worldNormal;

@@ -8,7 +8,7 @@
 
 // camera data
 layout(binding = 0) uniform _Camera {
-	Camera camera;
+	CameraData camera;
 };
 
 // per-vertex data

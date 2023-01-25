@@ -6,6 +6,8 @@ target_sources(vuren PRIVATE
     Utils.cpp
     ResourceManager.hpp
     ResourceManager.cpp
+    Camera.hpp
+    Camera.cpp
     Scene.hpp
     Scene.cpp
     RenderPass.hpp
