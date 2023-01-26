@@ -1,14 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 project(vuren)
 add_executable(vuren)
 
 find_package(Vulkan REQUIRED)
+target_include_directories(vuren PUBLIC ${Vulkan_INCLUDE_DIR})
+target_link_libraries(vuren ${Vulkan_LIBRARY})
 
-set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD 17)
-set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD_REQUIRED ON)
-set_target_properties(vuren PROPERTIES CMAKE_CXX_EXTENSIONS OFF)
-set_target_properties(vuren PROPERTIES CMAKE_BUILD_TYPE Debug)
+if (MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")    
+endif()
 
 add_subdirectory(src)
 target_include_directories(vuren PRIVATE src)
@@ -19,6 +24,7 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(ext/glfw)
 target_include_directories(vuren PRIVATE ext/glfw/include)
+target_link_libraries(vuren glfw)
 
 target_include_directories(vuren PRIVATE ext)
 target_include_directories(vuren PRIVATE ext/imgui)
@@ -37,14 +43,10 @@ set(GLM_ENABLE_EXPERIMENTAL ON CACHE BOOL "" FORCE)
 add_subdirectory(ext/glm)
 target_include_directories(vuren PRIVATE ext/glm)
 
-target_link_libraries(vuren PRIVATE
-    vulkan
-    glfw
-)
-
 # compile shaders
 # reference: https://github.com/zeux/niagara/blob/master/CMakeLists.txt
 set(GLSLANG_VALIDATOR "glslangValidator")
+find_program(GLSLANG_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin $ENV{VK_SDK_PATH}/Bin)
 file(GLOB_RECURSE GLSL_SOURCE_FILES "${PROJECT_SOURCE_DIR}/src/*.glsl")
 
 foreach(GLSL_SOURCE_FILE ${GLSL_SOURCE_FILES})
