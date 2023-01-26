@@ -4,20 +4,25 @@ project(vuren)
 add_executable(vuren)
 
 find_package(Vulkan REQUIRED)
-find_package(glfw3 REQUIRED)
-find_package(glm REQUIRED)
 
-set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD 20)
+set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD 17)
 set_target_properties(vuren PROPERTIES CMAKE_CXX_STANDARD_REQUIRED ON)
 set_target_properties(vuren PROPERTIES CMAKE_CXX_EXTENSIONS OFF)
+set_target_properties(vuren PROPERTIES CMAKE_BUILD_TYPE Debug)
 
 add_subdirectory(src)
 target_include_directories(vuren PRIVATE src)
 
+# external libraries
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(ext/glfw)
+target_include_directories(vuren PRIVATE ext/glfw/include)
+
 target_include_directories(vuren PRIVATE ext)
 target_include_directories(vuren PRIVATE ext/imgui)
 target_include_directories(vuren PRIVATE ext/imgui/backends)
-
 target_sources(vuren PRIVATE
     ext/imgui/imgui.cpp
     ext/imgui/imgui_draw.cpp
@@ -26,6 +31,11 @@ target_sources(vuren PRIVATE
     ext/imgui/backends/imgui_impl_vulkan.cpp
     ext/imgui/backends/imgui_impl_glfw.cpp
 )
+
+set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
+set(GLM_ENABLE_EXPERIMENTAL ON CACHE BOOL "" FORCE)
+add_subdirectory(ext/glm)
+target_include_directories(vuren PRIVATE ext/glm)
 
 target_link_libraries(vuren PRIVATE
     vulkan
@@ -63,4 +73,3 @@ add_dependencies(vuren shaders)
 
 # copy assets
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-# file(COPY ${CMAKE_CURRENT_LIST_DIR}/models DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

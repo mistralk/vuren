@@ -6,15 +6,6 @@ A prototype-oriented Vulkan rendering engine. A lot of parts has inspired by sev
 
 Currently it has only been tested on Ubuntu 22.04 and NVIDIA RTX GPU.
 
-## Prerequisites
-
-- Graphics card and driver providing Vulkan 1.2+ support and hardware ray tracing
-- Vulkan SDK
-- glslangValidator
-- GLFW3
-- GLM
-- CMake 3.20+
-
 ## Features
 
 - [x] Vulkan context initialization
@@ -28,7 +19,51 @@ Currently it has only been tested on Ubuntu 22.04 and NVIDIA RTX GPU.
     - [x] Ray-traced ambient occlusion
     - [x] Temporal accumulation
     - [ ] Reference unbiased path tracer
-- [x] Cemera manipulation
+- [x] Camera manipulation
+
+## Prerequisites
+
+- Graphics card and driver providing Vulkan 1.2+ support and hardware ray tracing
+- Vulkan SDK
+- glslangValidator
+- CMake 3.20+
+
+## Building the project
+
+First, clone the repository.
+
+```bash
+git clone --recursive https://github.com/mistralk/vuren.git
+```
+
+If you forgot to add `--recursive` option for cloning, run the following command:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Ubuntu
+
+First of all, you need to install some vulkan/glsl-related developer packages: `libvulkan-dev`, `vulkan-validationlayers-dev`, `spirv-tools` and `glslangValidator`. Also you might need to install X11 development packages `xorg-dev` for GLFW:
+
+Now you can build the project by run the following commands in the project root directory:
+
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
+
+To run the application:
+
+```bash
+./vuren
+```
+
+### Windows
+
+
 
 ## Licenses
 
