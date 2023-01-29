@@ -83,7 +83,7 @@ public:
     // temporary: for output texture control in GUI
     std::vector<std::string> kOffscreenOutputTextureNames;
     int kCurrentItem = 0;
-    bool kDirty      = false;
+    bool kDirty      = true;
 
 private:
     std::string m_appName;

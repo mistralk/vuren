@@ -39,6 +39,12 @@ public:
     virtual void record(vk::CommandBuffer commandBuffer) = 0;
     virtual void cleanup();
 
+    // a simple rule for output texture barriers
+    // 1. output texture's newLayout is always ShaderReadOnly
+    // 2. output texture's oldLayout is always General if the render pass is rt, 
+    //    and ColorAttachment/DepthAttachment/eUndefined if the render pass is raster (doesn't matter)
+    virtual void outputTextureBarrier(vk::CommandBuffer commandBuffer) {}
+
     void createDescriptorSet(const std::vector<ResourceBindingInfo> &bindingInfos);
     vk::ShaderModule createShaderModule(const std::vector<char> &code);
 

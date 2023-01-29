@@ -23,13 +23,13 @@ public:
     void define() override {
         // create textures for the attachments
         m_pResourceManager->createTextureRGBA32Sfloat("RasterColor");
-        m_pResourceManager->createTextureRGBA32Sfloat("RasterPosWorld");
-        m_pResourceManager->createTextureRGBA32Sfloat("RasterNormalWorld");
+        m_pResourceManager->createTextureRGBA32Sfloat("RasterWorldPos");
+        m_pResourceManager->createTextureRGBA32Sfloat("RasterWorldNormal");
         m_pResourceManager->createDepthTexture("RasterDepth");
 
         m_pContext->kOffscreenOutputTextureNames.push_back("RasterColor");
-        m_pContext->kOffscreenOutputTextureNames.push_back("RasterPosWorld");
-        m_pContext->kOffscreenOutputTextureNames.push_back("RasterNormalWorld");
+        m_pContext->kOffscreenOutputTextureNames.push_back("RasterWorldPos");
+        m_pContext->kOffscreenOutputTextureNames.push_back("RasterWorldNormal");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings;
@@ -53,7 +53,7 @@ public:
               .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
               .srcAccessMask = vk::AccessFlagBits::eNone,
               .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite },
-            { .imageView     = m_pResourceManager->getTexture("RasterPosWorld")->descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("RasterWorldPos")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -61,7 +61,7 @@ public:
               .dstStageMask  = vk::PipelineStageFlagBits::eColorAttachmentOutput,
               .srcAccessMask = vk::AccessFlagBits::eNone,
               .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite },
-            { .imageView     = m_pResourceManager->getTexture("RasterNormalWorld")->descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("RasterWorldNormal")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -90,6 +90,23 @@ public:
         // create a graphics pipeline for this render pass
         setupRasterPipeline("shaders/RenderPasses/GBufferPass/RasterGBuffer.vert.spv",
                             "shaders/RenderPasses/GBufferPass/RasterGBuffer.frag.spv");
+    }
+
+    void outputTextureBarrier(vk::CommandBuffer commandBuffer) override {
+        auto colorTexture = m_pResourceManager->getTexture("RasterColor");
+        transitionImageLayout(commandBuffer, colorTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eAllGraphics);
+
+        auto posTexture = m_pResourceManager->getTexture("RasterWorldPos");
+        transitionImageLayout(commandBuffer, posTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eAllGraphics);
+
+        auto normalTexture = m_pResourceManager->getTexture("RasterWorldNormal");
+        transitionImageLayout(commandBuffer, normalTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eAllGraphics);
     }
 
     void record(vk::CommandBuffer commandBuffer) override {

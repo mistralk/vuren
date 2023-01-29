@@ -175,6 +175,10 @@ public:
         m_globalTextureDict.insert({ name, pTexture });
     }
 
+    vk::Extent2D getExtent() {
+        return m_extent;
+    }
+
 private:
     std::unordered_map<std::string, std::shared_ptr<Texture>> m_globalTextureDict;
     std::unordered_map<std::string, std::shared_ptr<Buffer>> m_globalBufferDict;

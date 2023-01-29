@@ -2,6 +2,8 @@ target_sources(vuren PRIVATE
     Common.hpp
     VulkanContext.hpp
     VulkanContext.cpp
+    SwapChain.hpp
+    SwapChain.cpp
     Utils.hpp
     Utils.cpp
     ResourceManager.hpp

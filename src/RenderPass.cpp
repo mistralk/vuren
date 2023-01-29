@@ -15,6 +15,7 @@ void RenderPass::init(VulkanContext *pContext, vk::CommandPool commandPool,
     m_commandPool      = commandPool;
     m_pResourceManager = pResourceManager;
     m_pScene           = pScene;
+    m_extent           = pResourceManager->getExtent();
 }
 
 void RenderPass::cleanup() {

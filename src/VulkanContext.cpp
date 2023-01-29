@@ -92,22 +92,6 @@ void VulkanContext::createInstance() {
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_instance);
 #endif
     }
-
-    // "Vulkan is a platform agnostic API, which means that you need an extension
-    //  to interface with the window system. GLFW has a handy built-in function
-    //  that returns the extension(s) it needs to do ..."
-
-    // auto extensions = getRequiredExtensions();
-    // instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    // instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
-
-    std::vector<vk::ExtensionProperties> avaliableExtensions = vk::enumerateInstanceExtensionProperties(nullptr);
-    std::cout << "available extensions:\n";
-    for (const auto &extension: avaliableExtensions) {
-        std::cout << '\t' << extension.extensionName << '\n';
-    }
-
-    // m_instance = vk::createInstance(instanceCreateInfo, nullptr);
 }
 
 void VulkanContext::setupDebugMessenger() {

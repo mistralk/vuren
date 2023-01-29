@@ -29,7 +29,7 @@ Currently it has only been tested on Ubuntu 22.04 and Windows 10 with NVIDIA RTX
 
 ## Building the project
 
-First, clone the repository.
+First, clone the repository:
 
 ```bash
 git clone --recursive https://github.com/mistralk/vuren.git
@@ -43,7 +43,11 @@ git submodule update --init --recursive
 
 ### Ubuntu
 
-First of all, you need to install some vulkan/glsl-related developer packages: `libvulkan-dev`, `vulkan-validationlayers-dev`, `spirv-tools` and `glslangValidator`. Also you might need to install X11 development packages `xorg-dev` for GLFW.
+First of all, you need to install some vulkan-related developer packages and glslangValidator. Also you might need to install X11 development packages `xorg-dev` for GLFW:
+
+```bash
+sudo apt install libvulkan-dev vulkan-validationlayers-dev spirv-tools glslang-tools xorg-dev
+```
 
 Now you can build the project by run the following commands in the project root directory:
 
@@ -51,7 +55,7 @@ Now you can build the project by run the following commands in the project root 
 mkdir build
 cd build
 cmake ..
-make
+make -j $(nproc)
 ```
 
 Also you can specify the build type(Debug or Release) before running the cmake command.

@@ -40,35 +40,35 @@ public:
     }
 
     void connectTextureCurrentFrame(const std::string &srcTexture) {
-        m_pResourceManager->connectTextures(srcTexture, "CurrentFrame");
+        m_pResourceManager->connectTextures(srcTexture, "AccumInCurrentFrame");
     }
 
     void define() override {
-        m_pResourceManager->createTextureRGBA32Sfloat("CurrentFrame");
-        m_pResourceManager->createTextureRGBA32Sfloat("PreviousFrames");
-        m_pResourceManager->createTextureRGBA32Sfloat("AccumulatedOutput");
+        m_pResourceManager->createTextureRGBA32Sfloat("AccumInCurrentFrame");
+        m_pResourceManager->createTextureRGBA32Sfloat("AccumInPreviousFrames");
+        m_pResourceManager->createTextureRGBA32Sfloat("AccumOutput");
         m_pResourceManager->createDepthTexture("AccumDepth");
         m_pResourceManager->createUniformBuffer<AccumData>("AccumData");
 
-        m_pContext->kOffscreenOutputTextureNames.push_back("AccumulatedOutput");
+        m_pContext->kOffscreenOutputTextureNames.push_back("AccumOutput");
         
-        transitionImageLayout(*m_pContext, m_commandPool, m_pResourceManager->getTexture("PreviousFrames"), vk::ImageLayout::eUndefined,
+        transitionImageLayout(*m_pContext, m_commandPool, m_pResourceManager->getTexture("AccumInPreviousFrames"), vk::ImageLayout::eUndefined,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eAllCommands,
                               vk::PipelineStageFlagBits::eFragmentShader);
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings;
         bindings.push_back(
-            { "CurrentFrame", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1 });
+            { "AccumInCurrentFrame", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1 });
         bindings.push_back(
-            { "PreviousFrames", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1 });
+            { "AccumInPreviousFrames", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1 });
         bindings.push_back({ "AccumData", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eFragment, 1 });
 
         createDescriptorSet(bindings);
 
         // create framebuffers for the attachments
         std::vector<AttachmentInfo> colorAttachments = {
-            { .imageView     = m_pResourceManager->getTexture("AccumulatedOutput")->descriptorInfo.imageView,
+            { .imageView     = m_pResourceManager->getTexture("AccumOutput")->descriptorInfo.imageView,
               .format        = vk::Format::eR32G32B32A32Sfloat,
               .oldLayout     = vk::ImageLayout::eUndefined,
               .newLayout     = vk::ImageLayout::eColorAttachmentOptimal,
@@ -97,6 +97,13 @@ public:
         // create a graphics pipeline for this render pass
         setupRasterPipeline("shaders/RenderPasses/AccumulationPass/Accum.vert.spv",
                             "shaders/RenderPasses/AccumulationPass/Accum.frag.spv", true);
+    }
+
+    void outputTextureBarrier(vk::CommandBuffer commandBuffer) override {
+        auto accumTexture = m_pResourceManager->getTexture("AccumOutput");
+        transitionImageLayout(commandBuffer, accumTexture, vk::ImageLayout::eColorAttachmentOptimal,
+                              vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eAllGraphics,
+                              vk::PipelineStageFlagBits::eFragmentShader);
     }
 
     void record(vk::CommandBuffer commandBuffer) override {

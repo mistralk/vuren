@@ -26,14 +26,26 @@ public:
         ImGui::DragFloat("Radius (ray.maxT)", &m_aoData.radius, 0.01f, 0.0f, 100.0f, "%.02f");
     }
 
+    void connectTextureWorldPos(const std::string &srcTexture) {
+        m_pResourceManager->connectTextures(srcTexture, "AoInWorldPos");
+    }
+
+    void connectTextureWorldNormal(const std::string &srcTexture) {
+        m_pResourceManager->connectTextures(srcTexture, "AoInWorldNormal");
+    }
+
     void define() override {
-        m_pResourceManager->createTextureRGBA32Sfloat("AOOutput");
-        auto texture = m_pResourceManager->getTexture("AOOutput");
-        transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
+        // prepare resources
+        m_pResourceManager->createTextureRGBA32Sfloat("AoInWorldPos");
+        m_pResourceManager->createTextureRGBA32Sfloat("AoInWorldNormal");
+        m_pResourceManager->createTextureRGBA32Sfloat("AoOutput");
+        auto outputTex = m_pResourceManager->getTexture("AoOutput");
+        transitionImageLayout(*m_pContext, m_commandPool, outputTex, vk::ImageLayout::eUndefined,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
                               vk::PipelineStageFlagBits::eRayTracingShaderKHR);
 
-        m_pContext->kOffscreenOutputTextureNames.push_back("AOOutput");
+        // for gui output selection
+        m_pContext->kOffscreenOutputTextureNames.push_back("AoOutput");
 
         // prepare the AO variable buffer
         m_pResourceManager->createUniformBuffer<AoData>("AoData");
@@ -42,9 +54,9 @@ public:
         std::vector<ResourceBindingInfo> bindings = {
             { "Tlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
             { "AoData", vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "RasterPosWorld", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "RasterNormalWorld", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "AOOutput", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "AoInWorldPos", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "AoInWorldNormal", vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "AoOutput", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
         };
         createDescriptorSet(bindings);
 

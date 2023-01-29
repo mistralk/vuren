@@ -22,20 +22,20 @@ public:
 
     void define() override {
         // for ray tracing, writing to output image will be manually called by shader
-        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedPosWorld");
-        auto texture = m_pResourceManager->getTexture("RayTracedPosWorld");
+        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedWorldPos");
+        auto texture = m_pResourceManager->getTexture("RayTracedWorldPos");
         transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
                               vk::PipelineStageFlagBits::eRayTracingShaderKHR);
 
-        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedNormalWorld");
-        texture = m_pResourceManager->getTexture("RayTracedNormalWorld");
+        m_pResourceManager->createTextureRGBA32Sfloat("RayTracedWorldNormal");
+        texture = m_pResourceManager->getTexture("RayTracedWorldNormal");
         transitionImageLayout(*m_pContext, m_commandPool, texture, vk::ImageLayout::eUndefined,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eTopOfPipe,
                               vk::PipelineStageFlagBits::eRayTracingShaderKHR);
 
-        m_pContext->kOffscreenOutputTextureNames.push_back("RayTracedPosWorld");
-        m_pContext->kOffscreenOutputTextureNames.push_back("RayTracedNormalWorld");
+        m_pContext->kOffscreenOutputTextureNames.push_back("RayTracedWorldPos");
+        m_pContext->kOffscreenOutputTextureNames.push_back("RayTracedWorldNormal");
 
         // create a descriptor set
         std::vector<ResourceBindingInfo> bindings = {
@@ -44,8 +44,8 @@ public:
               static_cast<uint32_t>(m_pScene->getTextures().size()) },
             { "SceneObjects", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eClosestHitKHR,
               static_cast<uint32_t>(m_pScene->getObjects().size()) },
-            { "RayTracedPosWorld", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
-            { "RayTracedNormalWorld", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "RayTracedWorldPos", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
+            { "RayTracedWorldNormal", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
             { "GBufferTlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR,
               1 } // name doesn't matter for AS
         };
