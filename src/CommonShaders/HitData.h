@@ -9,7 +9,6 @@ struct SurfaceHit {
 
     // material info
     vec3 diffuse;
-    vec3 textureId;
 };
 
 SurfaceHit getInitialValues() {

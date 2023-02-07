@@ -173,7 +173,7 @@ void ResourceManager::setExtent(vk::Extent2D extent) { m_extent = extent; }
 void ResourceManager::setCommandPool(vk::CommandPool commandPool) { m_commandPool = commandPool; }
 
 void ResourceManager::loadObjModel(const std::string &name, const std::string &filename,
-                                   std::shared_ptr<Scene> pScene) {
+                                   std::shared_ptr<Scene> pScene, uint32_t materialId) {
     std::string vertexBufferKey = std::string(name + "_vertexBuffer");
     std::string indexBufferKey  = std::string(name + "_indexBuffer");
     std::vector<Vertex> vertices;
@@ -221,12 +221,13 @@ void ResourceManager::loadObjModel(const std::string &name, const std::string &f
                            .indexBufferSize  = static_cast<uint32_t>(indices.size()),
                            .pVertexBuffer    = m_globalBufferDict[vertexBufferKey],
                            .pIndexBuffer     = m_globalBufferDict[indexBufferKey],
-                           .materialId       = 0 };
+                           .materialId       = materialId };
 
     // using this address information, shaders can access these buffers by indexing.
     SceneObjectDevice objectDeviceInfo = {
         .vertexAddress = m_pContext->getBufferDeviceAddress(m_globalBufferDict[vertexBufferKey]->descriptorInfo.buffer),
-        .indexAddress  = m_pContext->getBufferDeviceAddress(m_globalBufferDict[indexBufferKey]->descriptorInfo.buffer)
+        .indexAddress  = m_pContext->getBufferDeviceAddress(m_globalBufferDict[indexBufferKey]->descriptorInfo.buffer),
+        .materialId = materialId
     };
 
     pScene->addObject(object);

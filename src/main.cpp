@@ -106,7 +106,8 @@ public:
 
         auto texture1 = m_pResourceManager->createModelTexture("Bunny", "assets/textures/texture.jpg");
         m_pScene->addTexture(texture1);
-        m_pResourceManager->loadObjModel("Bunny", "assets/models/bunny.obj", m_pScene);
+        m_pResourceManager->loadObjModel("Bunny", "assets/models/bunny.obj", m_pScene, 0);
+        m_pResourceManager->loadObjModel("GreenBunny", "assets/models/bunny.obj", m_pScene, 1);
 
         auto texture2 = m_pResourceManager->createModelTexture("VikingRoom", "assets/textures/viking_room.png");
         m_pScene->addTexture(texture2);
@@ -118,8 +119,8 @@ public:
             .textureId = 0
         };
         Material material2 = {
-            .diffuse = vec3(0.3f, 0.8f, 0.3f),
-            .textureId = 2
+            .diffuse = vec3(0.0f, 1.0f, 0.0f),
+            .textureId = 1
         };
         m_pScene->addMaterial(material1);
         m_pScene->addMaterial(material2);
@@ -127,7 +128,8 @@ public:
 
         m_pResourceManager->createObjectDeviceInfoBuffer(m_pScene);
 
-        createRandomInstances(0, 30);
+        createRandomInstances(0, 9);
+        createRandomInstances(1, 1);
     }
 
     void initRenderGraph() {

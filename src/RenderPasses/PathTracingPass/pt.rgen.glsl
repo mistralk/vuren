@@ -37,7 +37,7 @@ void main() {
 
     vec3 radiance = vec3(0.0);
     vec3 throughput = vec3(1.0);
-    int max_depth = 3;
+    int max_depth = 4;
 
     // depth = 0: black image
 
@@ -72,9 +72,9 @@ void main() {
             pos = payload.worldPos;
             normal = payload.worldNormal;
             // 라이트소스 위에 힛포인트가 올라간 경우에도 알아서 처리될것임
-            throughput = payload.diffuse;
-            // throughput *= brdf value / pdf 
 
+            vec3 brdfValue = payload.diffuse * INV_PI;
+            throughput *= brdfValue; // brdf / pdf 
         }
         
         // ray miss: background radiance was already calculated in the miss shader
@@ -85,9 +85,17 @@ void main() {
         // for (int lightIdx = 0; lightIdx <);
         //     radiance += throughput * sceneLights[lightIdx].Le(worldDir)
 
+        vec3 lightpos = vec3(2,2,2);
+        vec3 ldir = lightpos - pos.xyz;
+        vec3 L = normalize(ldir);
+        float ldist = length(ldir);
+        float intensity = 15.0 / (ldist * ldist);
+        float NdotL = clamp(dot(normal, L), 0.0, 1.0);
+
+        radiance += vec3(intensity * throughput * NdotL);
+
         // shading the pixel
-        radiance = throughput; 
-        // radiance += throughput * 1.0;
+        // radiance = throughput;
 
         // sample the next path segment
         uv = vec2(rand(rngState), rand(rngState));

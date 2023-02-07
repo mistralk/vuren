@@ -55,7 +55,7 @@ public:
     std::shared_ptr<Texture> createModelTexture(const std::string &name, const std::string &filename);
     void createModelTextureSampler(std::shared_ptr<Texture> pTexture);
 
-    void loadObjModel(const std::string &name, const std::string &filename, std::shared_ptr<Scene> pScene);
+    void loadObjModel(const std::string &name, const std::string &filename, std::shared_ptr<Scene> pScene, uint32_t materialId);
     void createObjectDeviceInfoBuffer(std::shared_ptr<Scene> pScene) {
         createBufferByHostData<SceneObjectDevice>(pScene->getObjectsDevice(), vk::BufferUsageFlagBits::eStorageBuffer,
                                                   vk::MemoryPropertyFlagBits::eDeviceLocal, "SceneObjectDeviceInfo");
