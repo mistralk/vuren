@@ -15,7 +15,7 @@ layout(buffer_reference, scalar) buffer Indices {
     ivec3 i[];
 };
 
-SurfaceHit getHitData(SceneObjectDevice objInfo, IntersectionAttribute attribs) {
+SurfaceHit getHitData(SceneObjectDevice objInfo, IntersectionAttribute attribs, Material material) {
     SurfaceHit hit = getInitialValues();
 
     Vertices vertices = Vertices(objInfo.vertexAddress);
@@ -33,7 +33,7 @@ SurfaceHit getHitData(SceneObjectDevice objInfo, IntersectionAttribute attribs) 
     vec3 pos = (v0.pos * barycentrics.x) + (v1.pos * barycentrics.y) + (v2.pos * barycentrics.z);
 
     // world position
-    hit.worldPos = vec3(gl_ObjectToWorldEXT * vec4(pos, 1.0));
+    hit.worldPos = vec4((gl_ObjectToWorldEXT * vec4(pos, 1.0)), 1.0);
 
     // local shading normal
     vec3 normal = (v0.normal * barycentrics.x) + (v1.normal * barycentrics.y) + (v2.normal * barycentrics.z);
@@ -43,6 +43,8 @@ SurfaceHit getHitData(SceneObjectDevice objInfo, IntersectionAttribute attribs) 
     //   WorldToObject = inverse(world)
     //   WorldToObject^T * v = v * WorldToObject
     hit.worldNormal = normalize(vec3(normal * gl_WorldToObjectEXT));
+
+    hit.diffuse = material.diffuse;
 
     return hit;
 }

@@ -47,7 +47,9 @@ public:
             { "RayTracedWorldPos", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
             { "RayTracedWorldNormal", vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eRaygenKHR, 1 },
             { "GBufferTlas", vk::DescriptorType::eAccelerationStructureKHR, vk::ShaderStageFlagBits::eRaygenKHR,
-              1 } // name doesn't matter for AS
+              1 }, // name doesn't matter for AS
+            { "SceneMaterials", vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eClosestHitKHR,
+              static_cast<uint32_t>(m_pScene->getMaterials().size()) }
         };
         createDescriptorSet(bindings);
 

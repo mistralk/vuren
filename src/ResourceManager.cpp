@@ -13,8 +13,11 @@ ResourceManager::~ResourceManager() {}
 
 // make inputTextureKey point to previous pass' output texture
 void ResourceManager::connectTextures(const std::string &srcTexture, const std::string &dstTexture) {
+    if (m_globalTextureDict.find(srcTexture) == m_globalTextureDict.end()) {
+        throw std::runtime_error("connectTexture: cannot find the src texture!");
+    }
     if (m_globalTextureDict.find(dstTexture) != m_globalTextureDict.end()) {
-        throw std::runtime_error("this destination texture is already pointing a texture!");
+        throw std::runtime_error("connectTexture: the destination texture is already pointing a texture!");
     }
     m_globalTextureDict.insert({ dstTexture, m_globalTextureDict[srcTexture] });
 }
@@ -217,7 +220,8 @@ void ResourceManager::loadObjModel(const std::string &name, const std::string &f
     SceneObject object = { .vertexBufferSize = static_cast<uint32_t>(vertices.size()),
                            .indexBufferSize  = static_cast<uint32_t>(indices.size()),
                            .pVertexBuffer    = m_globalBufferDict[vertexBufferKey],
-                           .pIndexBuffer     = m_globalBufferDict[indexBufferKey] };
+                           .pIndexBuffer     = m_globalBufferDict[indexBufferKey],
+                           .materialId       = 0 };
 
     // using this address information, shaders can access these buffers by indexing.
     SceneObjectDevice objectDeviceInfo = {

@@ -41,7 +41,7 @@ void main() {
 	// gl_Position = camera.proj * worldPos;
 	gl_Position = camera.proj * camera.view * worldPos;
 
-	outHitData.worldPos = worldPos.xyz;
+	outHitData.worldPos = worldPos;
 	outHitData.worldNormal = normalize((instanceInvTransposeWorld * vec4(inNormal, 0.0)).xyz);
     outHitData.texCoord = inTexCoord;
 }

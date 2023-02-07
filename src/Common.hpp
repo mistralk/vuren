@@ -47,6 +47,7 @@ struct SceneObject {
     uint indexBufferSize{ 0 };
     std::shared_ptr<Buffer> pVertexBuffer;
     std::shared_ptr<Buffer> pIndexBuffer;
+    uint materialId{ 0 };
     uint instanceCount{ 0 };
 };
 
@@ -55,6 +56,22 @@ struct SceneObject {
 struct SceneObjectDevice {
     uint64_t vertexAddress;
     uint64_t indexAddress;
+    uint materialId;
+};
+
+struct SceneGlobalData {
+    uint lightCount;
+};
+
+struct Light {
+    uint type;
+    vec3 pos;
+    vec3 intensity;
+};
+
+struct Material {
+    vec3 diffuse;
+    uint textureId;
 };
 
 struct Vertex {

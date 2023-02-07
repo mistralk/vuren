@@ -131,6 +131,13 @@ void RenderPass::createDescriptorSet(const std::vector<ResourceBindingInfo> &bin
                 bufferInfos.push_back(bufferInfo);
             }
             write.pBufferInfo = &bufferInfos.back() - m_pScene->getObjects().size() + 1;
+        } else if (bindingInfos[i].name == "SceneMaterials") {
+            assert(bindings[i].descriptorType == vk::DescriptorType::eStorageBuffer);
+            for (auto &buffer: m_pScene->getMaterials()) {
+                bufferInfo = m_pResourceManager->getBuffer("MaterialBuffer")->descriptorInfo;
+                bufferInfos.push_back(bufferInfo);
+            }
+            write.pBufferInfo = &bufferInfos.back() - m_pScene->getMaterials().size() + 1;
         }
 
         // everything else resources

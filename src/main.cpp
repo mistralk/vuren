@@ -43,6 +43,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include "RenderPasses/GBufferPass/RayTracedGBufferPass.hpp"
 #include "RenderPasses/GBufferPass/RasterGBufferPass.hpp"
 #include "RenderPasses/AccumulationPass/AccumulationPass.hpp"
+#include "RenderPasses/PathTracingPass/PathTracingPass.hpp"
 
 namespace vuren {
 
@@ -107,9 +108,22 @@ public:
         m_pScene->addTexture(texture1);
         m_pResourceManager->loadObjModel("Bunny", "assets/models/bunny.obj", m_pScene);
 
-        // auto texture = m_pResourceManager->createModelTexture("VikingRoom", "assets/textures/viking_room.png");
-        // m_pScene->addTexture(texture);
+        auto texture2 = m_pResourceManager->createModelTexture("VikingRoom", "assets/textures/viking_room.png");
+        m_pScene->addTexture(texture2);
+
         // m_pResourceManager->loadObjModel("Room", "assets/models/viking_room.obj", m_pScene);
+
+        Material material1 = {
+            .diffuse = vec3(0.8f, 0.3f, 0.3f),
+            .textureId = 0
+        };
+        Material material2 = {
+            .diffuse = vec3(0.3f, 0.8f, 0.3f),
+            .textureId = 2
+        };
+        m_pScene->addMaterial(material1);
+        m_pScene->addMaterial(material2);
+        m_pResourceManager->createMaterialBuffer(m_pScene);
 
         m_pResourceManager->createObjectDeviceInfoBuffer(m_pScene);
 
@@ -145,15 +159,20 @@ public:
 
         // ray traced ambient occlusion pass
         // input textures: world position, world normal (from g-buffer pass)
-        m_aoPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        m_aoPass.connectTextureWorldPos("RasterWorldPos");
-        m_aoPass.connectTextureWorldNormal("RasterWorldNormal");
-        m_aoPass.setup();
+        // m_aoPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        // m_aoPass.connectTextureWorldPos("RasterWorldPos");
+        // m_aoPass.connectTextureWorldNormal("RasterWorldNormal");
+        // m_aoPass.setup();
+
+        m_pathTracingPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
+        m_pathTracingPass.connectTextureWorldPos("RasterWorldPos");
+        m_pathTracingPass.connectTextureWorldNormal("RasterWorldNormal");
+        m_pathTracingPass.setup();
 
         // temporal accumulation pass
         // input textures: the current frame's rendered result
         m_accumPass.init(&m_vkContext, m_commandPool, m_pResourceManager, m_pScene);
-        m_accumPass.connectTextureCurrentFrame("AoOutput");
+        m_accumPass.connectTextureCurrentFrame("PtOutput");
         m_accumPass.setup();
 
         // final rendering pass (and swap chain)
@@ -174,7 +193,8 @@ public:
 
             updateGUI(deltaTime);
             manipulateCamera();
-            m_aoPass.updateUniformBuffer();
+            // m_aoPass.updateUniformBuffer();
+            m_pathTracingPass.updateUniformBuffer();
             m_accumPass.updateUniformBuffer();
 
             drawFrame();
@@ -195,12 +215,20 @@ public:
         m_rasterGBufferPass.outputTextureBarrier(commandBuffer);
 
         // AO pass output texture
-        m_aoPass.record(commandBuffer);
+        // m_aoPass.record(commandBuffer);
+        // auto aoTexture = m_pResourceManager->getTexture("AoOutput");
+        // transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eGeneral,
+        //                       vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eRayTracingShaderKHR,
+        //                       vk::PipelineStageFlagBits::eFragmentShader);
 
-        auto aoTexture = m_pResourceManager->getTexture("AoOutput");
-        transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eGeneral,
+        
+        m_pathTracingPass.record(commandBuffer);
+        auto rtTexture = m_pResourceManager->getTexture("PtOutput");
+        transitionImageLayout(commandBuffer, rtTexture, vk::ImageLayout::eGeneral,
                               vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eRayTracingShaderKHR,
                               vk::PipelineStageFlagBits::eFragmentShader);
+
+
 
         m_accumPass.record(commandBuffer);
         m_accumPass.outputTextureBarrier(commandBuffer);
@@ -211,7 +239,7 @@ public:
         // for raster attachments, we don't need to transition to the original layout(eColorAttachmentOptimal)
         // explicitly. because we defined oldLayout = eUndefined(which means "don't care") for raster render pass
         // initialization. in contrast, ray traced output texutre layout need to be recovered explicitly.
-        transitionImageLayout(commandBuffer, aoTexture, vk::ImageLayout::eShaderReadOnlyOptimal,
+        transitionImageLayout(commandBuffer, rtTexture, vk::ImageLayout::eShaderReadOnlyOptimal,
                               vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader,
                               vk::PipelineStageFlagBits::eBottomOfPipe);
         // to fix: general and scalable image flushing/invalidation strategy for ray tracing passes
@@ -319,7 +347,8 @@ public:
             ImGui::EndCombo();
         }
 
-        m_aoPass.updateGui();
+        // m_aoPass.updateGui();
+        m_pathTracingPass.updateGui();
         m_accumPass.updateGui();
 
         ImGui::End();
@@ -330,7 +359,8 @@ public:
         m_vkContext.m_device.destroyDescriptorPool(m_imguiDescriptorPool, nullptr);
 
         m_rasterGBufferPass.cleanup();
-        m_aoPass.cleanup();
+        // m_aoPass.cleanup();
+        m_pathTracingPass.cleanup();
         m_accumPass.cleanup();
         m_finalRenderPass.cleanup();
 
@@ -573,6 +603,7 @@ private:
     RayTracedGBufferPass m_rtGBufferPass;
     AmbientOcclusionPass m_aoPass;
     AccumulationPass m_accumPass;
+    PathTracingPass m_pathTracingPass;
 
     // for the final pass and gui
     // this pass is directly presented into swap chain framebuffers

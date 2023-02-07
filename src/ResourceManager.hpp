@@ -60,6 +60,10 @@ public:
         createBufferByHostData<SceneObjectDevice>(pScene->getObjectsDevice(), vk::BufferUsageFlagBits::eStorageBuffer,
                                                   vk::MemoryPropertyFlagBits::eDeviceLocal, "SceneObjectDeviceInfo");
     }
+    void createMaterialBuffer(std::shared_ptr<Scene> pScene){
+        createBufferByHostData<Material>(pScene->getMaterials(), vk::BufferUsageFlagBits::eStorageBuffer,
+                                                  vk::MemoryPropertyFlagBits::eDeviceLocal, "MaterialBuffer");
+    }
     void createAs(vk::AccelerationStructureCreateInfoKHR createInfo, AccelerationStructure &as);
     void destroyAs(AccelerationStructure &as);
 

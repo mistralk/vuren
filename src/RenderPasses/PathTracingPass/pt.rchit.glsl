@@ -9,11 +9,11 @@
 #include "Common.hpp"
 #include "CommonShaders/HitDataRt.h"
 
-layout(set = 0, binding = 1) uniform sampler2D[] texSamplers;
-layout(set = 0, binding = 2) buffer _SceneObjectDevice {
+layout(set = 0, binding = 5) uniform sampler2D[] texSamplers;
+layout(set = 0, binding = 6) buffer _SceneObjectDevice {
     SceneObjectDevice data[];
 } objDevice;
-layout(set = 0, binding = 6) buffer _Material {
+layout(set = 0, binding = 7) buffer _Material {
     Material data[];
 } materials;
 

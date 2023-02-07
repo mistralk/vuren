@@ -43,6 +43,6 @@ void main() {
                 0               // payload location
     );
 
-    imageStore(worldPos, ivec2(gl_LaunchIDEXT.xy), vec4(payload.worldPos, 1.0));
+    imageStore(worldPos, ivec2(gl_LaunchIDEXT.xy), payload.worldPos);
     imageStore(worldNormal, ivec2(gl_LaunchIDEXT.xy), vec4(payload.worldNormal, 1.0));
 }
